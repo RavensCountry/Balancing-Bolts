@@ -3,9 +3,3 @@ nixPkgs = ["python311"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]
-
-[phases.build]
-cmds = ["chmod +x start.sh"]
-
-[start]
-cmd = "./start.sh"

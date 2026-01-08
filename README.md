@@ -6,6 +6,15 @@ Modern apartment complex inventory management system with invoice tracking, prop
 
 See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for detailed Railway deployment instructions.
 
+### Demo Account
+
+A demo admin account is automatically created on first startup:
+- **Email:** demo@balancingbolts.com
+- **Password:** demo123
+- **Role:** Admin
+
+This account is intended for testing and demonstration purposes. Create your own admin account for production use.
+
 ---
 
 ## Local Development

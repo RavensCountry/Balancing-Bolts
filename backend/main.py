@@ -115,6 +115,23 @@ async def _configure_on_startup():
     except Exception:
         logger.exception('Error seeding default properties')
 
+    # Create demo admin account if it doesn't exist
+    try:
+        with get_session() as s:
+            demo_email = "demo@balancingbolts.com"
+            existing_demo = s.exec(select(User).where(User.email == demo_email)).first()
+            if not existing_demo:
+                logger.info("Creating demo admin account...")
+                create_user(
+                    name="Demo Admin",
+                    email=demo_email,
+                    role="admin",
+                    password="demo123"
+                )
+                logger.info("Demo admin account created: demo@balancingbolts.com / demo123")
+    except Exception:
+        logger.exception('Error creating demo admin account')
+
 
 @app.on_event("shutdown")
 async def _shutdown_resman_poller():

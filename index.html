@@ -1,0 +1,1864 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Balancing Bolts — Apartment Inventory Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-gradient-start: #f0f4f8;
+        --bg-gradient-end: #e2e8f0;
+        --text-primary: #1a202c;
+        --text-secondary: #4a5568;
+        --text-muted: #718096;
+        --card-bg: #ffffff;
+        --card-border: #e2e8f0;
+        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --primary: #4f46e5;
+        --primary-hover: #4338ca;
+        --primary-light: #eef2ff;
+        --success: #10b981;
+        --success-light: #d1fae5;
+        --warning: #f59e0b;
+        --warning-light: #fef3c7;
+        --danger: #ef4444;
+        --danger-light: #fee2e2;
+        --info: #3b82f6;
+        --info-light: #dbeafe;
+      }
+
+      body.dark-mode {
+        --bg-gradient-start: #1a202c;
+        --bg-gradient-end: #2d3748;
+        --text-primary: #f7fafc;
+        --text-secondary: #e2e8f0;
+        --text-muted: #a0aec0;
+        --card-bg: #2d3748;
+        --card-border: #4a5568;
+        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+        --primary: #6366f1;
+        --primary-hover: #818cf8;
+        --primary-light: #312e81;
+        --success: #34d399;
+        --success-light: #064e3b;
+        --warning: #fbbf24;
+        --warning-light: #78350f;
+        --danger: #f87171;
+        --danger-light: #7f1d1d;
+        --info: #60a5fa;
+        --info-light: #1e3a8a;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+        color: var(--text-primary);
+        min-height: 100vh;
+        line-height: 1.6;
+        transition: all 0.3s ease;
+      }
+
+      .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+
+      /* Header Styles */
+      .header {
+        background: var(--card-bg);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--card-border);
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.025em;
+      }
+
+      .header p {
+        font-size: 1.125rem;
+        color: var(--text-secondary);
+      }
+
+      /* Navigation */
+      .nav-tabs {
+        display: flex;
+        gap: 0.75rem;
+        background: var(--card-bg);
+        padding: 1rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--card-border);
+        flex-wrap: wrap;
+        overflow-x: auto;
+      }
+
+      .nav-tab {
+        background: transparent;
+        color: var(--text-secondary);
+        border: 2px solid transparent;
+        border-radius: 12px;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        white-space: nowrap;
+      }
+
+      .nav-tab:hover {
+        background: var(--primary-light);
+        color: var(--primary);
+        transform: translateY(-2px);
+      }
+
+      .nav-tab.active {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+      }
+
+      .nav-tab-icon {
+        font-size: 1.25rem;
+      }
+
+      /* Card Styles */
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s ease;
+      }
+
+      .card:hover {
+        box-shadow: var(--card-shadow-hover);
+        transform: translateY(-2px);
+      }
+
+      .card h2, .card h3 {
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+        font-weight: 700;
+      }
+
+      .card h2 {
+        font-size: 1.5rem;
+      }
+
+      .card h3 {
+        font-size: 1.25rem;
+      }
+
+      /* Stats Grid */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .stat-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s ease;
+      }
+
+      .stat-card:hover {
+        box-shadow: var(--card-shadow-hover);
+        transform: translateY(-4px);
+      }
+
+      .stat-info h4 {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+      }
+
+      .stat-value {
+        font-size: 2.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .stat-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+      }
+
+      .stat-icon.success {
+        background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+      }
+
+      .stat-icon.warning {
+        background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
+      }
+
+      .stat-icon.info {
+        background: linear-gradient(135deg, var(--info) 0%, #2563eb 100%);
+      }
+
+      /* Form Elements */
+      input, select, textarea {
+        width: 100%;
+        padding: 0.875rem 1rem;
+        border: 2px solid var(--card-border);
+        border-radius: 12px;
+        font-family: inherit;
+        font-size: 1rem;
+        background: var(--card-bg);
+        color: var(--text-primary);
+        transition: all 0.2s ease;
+        margin-bottom: 1rem;
+      }
+
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px var(--primary-light);
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      button {
+        padding: 0.875rem 1.5rem;
+        border: none;
+        border-radius: 12px;
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: center;
+      }
+
+      button.btn-primary {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+      }
+
+      button.btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+      }
+
+      button.btn-secondary {
+        background: var(--card-bg);
+        color: var(--text-primary);
+        border: 2px solid var(--card-border);
+      }
+
+      button.btn-secondary:hover {
+        background: var(--primary-light);
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+
+      button.btn-danger {
+        background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+      }
+
+      button.btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+      }
+
+      button.btn-success {
+        background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      /* Grid Layouts */
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+      }
+
+      .input-group {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .input-group > * {
+        flex: 1;
+        min-width: 200px;
+      }
+
+      /* Table Styles */
+      .table-container {
+        overflow-x: auto;
+        border-radius: 12px;
+        border: 1px solid var(--card-border);
+        margin-top: 1rem;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      thead {
+        background: var(--primary-light);
+      }
+
+      th {
+        padding: 1rem;
+        text-align: left;
+        font-weight: 600;
+        color: var(--primary);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--card-border);
+        color: var(--text-secondary);
+      }
+
+      tbody tr:hover {
+        background: var(--primary-light);
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      /* Property Grid */
+      .property-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .property-slot {
+        background: var(--card-bg);
+        border: 2px dashed var(--card-border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        text-align: center;
+        transition: all 0.3s ease;
+      }
+
+      .property-slot.filled {
+        border-style: solid;
+        border-color: var(--primary);
+        background: var(--primary-light);
+      }
+
+      .property-slot:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--card-shadow);
+      }
+
+      .property-name {
+        font-weight: 700;
+        font-size: 1.125rem;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+      }
+
+      .property-address {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin-bottom: 1rem;
+      }
+
+      /* Badge */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.375rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: var(--primary-light);
+        color: var(--primary);
+      }
+
+      .badge.success {
+        background: var(--success-light);
+        color: var(--success);
+      }
+
+      .badge.warning {
+        background: var(--warning-light);
+        color: var(--warning);
+      }
+
+      .badge.danger {
+        background: var(--danger-light);
+        color: var(--danger);
+      }
+
+      /* Alert/Message Styles */
+      .alert {
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        font-size: 0.95rem;
+      }
+
+      .alert.info {
+        background: var(--info-light);
+        color: var(--info);
+        border-left: 4px solid var(--info);
+      }
+
+      .alert.success {
+        background: var(--success-light);
+        color: var(--success);
+        border-left: 4px solid var(--success);
+      }
+
+      .alert.warning {
+        background: var(--warning-light);
+        color: var(--warning);
+        border-left: 4px solid var(--warning);
+      }
+
+      .alert.danger {
+        background: var(--danger-light);
+        color: var(--danger);
+        border-left: 4px solid var(--danger);
+      }
+
+      /* Login Screen */
+      #loginScreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)),
+                    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><rect fill="%23111827" width="1200" height="800"/><g fill-opacity="0.15"><circle fill="%23374151" cx="100" cy="100" r="50"/><circle fill="%234b5563" cx="300" cy="200" r="60"/><circle fill="%23374151" cx="500" cy="150" r="45"/><circle fill="%236b7280" cx="700" cy="300" r="70"/><circle fill="%23374151" cx="900" cy="200" r="55"/><circle fill="%234b5563" cx="1100" cy="400" r="65"/><circle fill="%23374151" cx="200" cy="500" r="50"/><circle fill="%236b7280" cx="400" cy="600" r="60"/><circle fill="%23374151" cx="600" cy="550" r="45"/><circle fill="%234b5563" cx="800" cy="650" r="55"/><circle fill="%23374151" cx="1000" cy="600" r="50"/></g></svg>');
+        background-size: cover;
+        background-position: center;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        z-index: 1000;
+      }
+
+      #loginScreen.active {
+        display: flex;
+      }
+
+      #loginScreen::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(circle at 20% 50%, rgba(79, 70, 229, 0.15) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 50%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+        pointer-events: none;
+      }
+
+      .login-container {
+        max-width: 480px;
+        width: 90%;
+        z-index: 10;
+        position: relative;
+      }
+
+      .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 24px;
+        padding: 3rem 2.5rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+
+      body.dark-mode .login-card {
+        background: rgba(45, 55, 72, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .login-header {
+        text-align: center;
+        margin-bottom: 2.5rem;
+      }
+
+      .login-header h2 {
+        font-size: 2.25rem;
+        font-weight: 700;
+        color: #06b6d4;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0.02em;
+        text-shadow: 0 2px 10px rgba(6, 182, 212, 0.3);
+      }
+
+      body.dark-mode .login-header h2 {
+        color: #22d3ee;
+      }
+
+      .login-header p {
+        color: var(--text-secondary);
+        font-size: 1rem;
+      }
+
+      .login-form-group {
+        margin-bottom: 1.25rem;
+      }
+
+      .login-form-group label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .login-form-group input {
+        width: 100%;
+        padding: 1rem 1.25rem;
+        border: 2px solid rgba(226, 232, 240, 0.8);
+        border-radius: 12px;
+        font-size: 1rem;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--text-primary);
+        transition: all 0.3s ease;
+        margin-bottom: 0;
+      }
+
+      body.dark-mode .login-form-group input {
+        background: rgba(31, 41, 55, 0.8);
+        border-color: rgba(75, 85, 99, 0.8);
+      }
+
+      .login-form-group input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        background: white;
+      }
+
+      body.dark-mode .login-form-group input:focus {
+        background: rgba(31, 41, 55, 0.95);
+      }
+
+      .login-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+
+      .login-buttons button {
+        flex: 1;
+        padding: 1rem 1.5rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+
+      .login-footer {
+        margin-top: 1.5rem;
+        text-align: center;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        padding-top: 1rem;
+        border-top: 1px solid rgba(226, 232, 240, 0.5);
+      }
+
+      body.dark-mode .login-footer {
+        border-top-color: rgba(75, 85, 99, 0.5);
+      }
+
+      .login-signup-link {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+      }
+
+      .login-signup-link button {
+        background: none;
+        border: none;
+        color: #06b6d4;
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .login-signup-link button:hover {
+        color: #0891b2;
+        transform: none;
+      }
+
+      /* Toggle Switch */
+      .toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 52px;
+        height: 28px;
+      }
+
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        margin: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--card-border);
+        transition: 0.3s;
+        border-radius: 34px;
+      }
+
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+      }
+
+      input:checked + .toggle-slider {
+        background-color: var(--primary);
+      }
+
+      input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+      }
+
+      /* Page visibility */
+      .page {
+        display: none;
+      }
+
+      .page.active {
+        display: block;
+      }
+
+      .main-app-container {
+        display: none;
+      }
+
+      .main-app-container.active {
+        display: block;
+      }
+
+      /* Pagination */
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+      }
+
+      .pagination button {
+        padding: 0.5rem 1rem;
+      }
+
+      .page-number {
+        font-weight: 600;
+        color: var(--text-primary);
+        padding: 0.5rem 1rem;
+        background: var(--primary-light);
+        border-radius: 8px;
+      }
+
+      /* Loading Animation */
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid var(--card-border);
+        border-radius: 50%;
+        border-top-color: var(--primary);
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .container {
+          padding: 1rem;
+        }
+
+        .header h1 {
+          font-size: 2rem;
+        }
+
+        .nav-tabs {
+          padding: 0.75rem;
+        }
+
+        .nav-tab {
+          padding: 0.625rem 1rem;
+          font-size: 0.875rem;
+        }
+
+        .stats-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stat-value {
+          font-size: 1.75rem;
+        }
+
+        .login-card {
+          padding: 2rem;
+        }
+      }
+
+      /* Utility Classes */
+      .text-center { text-align: center; }
+      .text-muted { color: var(--text-muted); }
+      .mb-1 { margin-bottom: 0.5rem; }
+      .mb-2 { margin-bottom: 1rem; }
+      .mb-3 { margin-bottom: 1.5rem; }
+      .mt-1 { margin-top: 0.5rem; }
+      .mt-2 { margin-top: 1rem; }
+      .mt-3 { margin-top: 1.5rem; }
+      .hidden { display: none !important; }
+      .flex { display: flex; }
+      .flex-center { display: flex; align-items: center; justify-content: center; }
+      .gap-1 { gap: 0.5rem; }
+      .gap-2 { gap: 1rem; }
+    </style>
+  </head>
+  <body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="page active">
+      <div class="login-container">
+        <div class="login-card">
+          <div class="login-header">
+            <h2>WELCOME TO BOLTS&BALANCE!</h2>
+            <p>Apartment Inventory Management System</p>
+          </div>
+          <div class="login-form-group">
+            <label for="login_email">👤 Username</label>
+            <input id="login_email" type="email" placeholder="Enter your email" />
+          </div>
+          <div class="login-form-group">
+            <label for="login_password">🔒 Password</label>
+            <input id="login_password" type="password" placeholder="Enter your password" />
+          </div>
+          <div class="login-buttons">
+            <button class="btn-primary" onclick="doLogin()">Sign In</button>
+          </div>
+          <div id="loginMsg" class="mt-2 text-center"></div>
+          <div class="login-footer">
+            If you do not have a login please contact your administrator
+            <div class="login-signup-link">
+              Need an account? <button onclick="doSignup()">Sign up here</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="main-app-container">
+      <div class="container">
+        <!-- Header -->
+        <div class="header">
+          <h1>🏢 Balancing Bolts</h1>
+          <p>Manage your apartment inventory with ease</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-tabs" id="navTabs">
+          <button class="nav-tab active" onclick="showPage('dashboard')">
+            <span class="nav-tab-icon">📊</span>
+            <span>Dashboard</span>
+          </button>
+          <button class="nav-tab" onclick="showPage('inventory')">
+            <span class="nav-tab-icon">📦</span>
+            <span>Inventory</span>
+          </button>
+          <button class="nav-tab" onclick="showPage('properties')">
+            <span class="nav-tab-icon">🏠</span>
+            <span>Properties</span>
+          </button>
+          <button class="nav-tab" onclick="showPage('invoices')">
+            <span class="nav-tab-icon">📄</span>
+            <span>Invoices</span>
+          </button>
+          <button class="nav-tab" onclick="showPage('reports')">
+            <span class="nav-tab-icon">📈</span>
+            <span>Reports</span>
+          </button>
+          <button class="nav-tab" onclick="showPage('settings')">
+            <span class="nav-tab-icon">⚙️</span>
+            <span>Settings</span>
+          </button>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page">
+          <!-- Stats -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-info">
+                <h4>Total Items</h4>
+                <div class="stat-value" id="statTotalItems">0</div>
+              </div>
+              <div class="stat-icon">📦</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-info">
+                <h4>Total Spent</h4>
+                <div class="stat-value" id="statTotalSpent">$0.00</div>
+              </div>
+              <div class="stat-icon success">💰</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-info">
+                <h4>Active Properties</h4>
+                <div class="stat-value" id="statActiveProperties">0</div>
+              </div>
+              <div class="stat-icon warning">🏠</div>
+            </div>
+          </div>
+
+          <!-- Current User Info -->
+          <div class="card">
+            <h3>👤 Current User</h3>
+            <div id="currentUserInfo">Loading...</div>
+            <button class="btn-danger mt-2" onclick="logout()">Logout</button>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="card">
+            <h3>🚀 Quick Actions</h3>
+            <div class="input-group">
+              <button class="btn-primary" onclick="showPage('inventory')">View Inventory</button>
+              <button class="btn-primary" onclick="showPage('properties')">Manage Properties</button>
+              <button class="btn-primary" onclick="showPage('invoices')">Import Invoices</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inventory Page -->
+        <div id="inventoryPage" class="page">
+          <div class="card">
+            <h3>📦 Inventory Browser</h3>
+            <div class="input-group">
+              <input id="inv_prop" type="number" placeholder="Property ID (optional)" />
+              <input id="inv_per" type="number" placeholder="Items per page" value="10" />
+              <button class="btn-primary" onclick="loadInventory(1)">Load Inventory</button>
+            </div>
+
+            <div class="table-container">
+              <div id="invTable">Click "Load Inventory" to view items</div>
+            </div>
+
+            <div class="pagination">
+              <button class="btn-secondary" onclick="prevPage()">← Previous</button>
+              <span class="page-number">Page <span id="invPage">1</span></span>
+              <button class="btn-secondary" onclick="nextPage()">Next →</button>
+            </div>
+          </div>
+
+          <!-- Add Inventory Item -->
+          <div class="card">
+            <h3>➕ Add New Inventory Item</h3>
+            <div class="input-group">
+              <input id="new_inv_name" placeholder="Item name" />
+              <input id="new_inv_desc" placeholder="Description" />
+            </div>
+            <div class="input-group">
+              <input id="new_inv_qty" type="number" placeholder="Quantity" value="1" />
+              <input id="new_inv_cost" type="number" step="0.01" placeholder="Cost" value="0.00" />
+              <input id="new_inv_prop" type="number" placeholder="Property ID" />
+            </div>
+            <button class="btn-success" onclick="addInventoryItem()" style="width: 100%;">Add Item</button>
+            <div id="addInvResult" class="mt-2"></div>
+          </div>
+        </div>
+
+        <!-- Properties Page -->
+        <div id="propertiesPage" class="page">
+          <div class="card">
+            <h3>🏠 Property Management</h3>
+            <p class="text-muted mb-2">Manage up to 9 properties</p>
+            <div id="propertiesGrid" class="property-grid"></div>
+          </div>
+
+          <!-- Add Property (Admin) -->
+          <div class="card" id="adminAddProperty">
+            <h3>➕ Add New Property</h3>
+            <input id="newPropName" placeholder="Property name" />
+            <input id="newPropAddress" placeholder="Address (optional)" />
+            <button class="btn-success" onclick="createProperty()" style="width: 100%;">Create Property</button>
+          </div>
+
+          <!-- Delete Property (Admin) -->
+          <div class="card" id="adminDeleteProperty">
+            <h3>🗑️ Delete Property</h3>
+            <select id="deletePropertySelect">
+              <option value="">Select a property...</option>
+            </select>
+            <button class="btn-danger" onclick="deleteProperty()" style="width: 100%;">Delete Selected Property</button>
+          </div>
+        </div>
+
+        <!-- Invoices Page -->
+        <div id="invoicesPage" class="page">
+          <div class="card">
+            <h3>📄 Import Invoices from CSV</h3>
+            <p class="text-muted mb-2">Upload a CSV file with columns: vendor, date, total, description</p>
+            <input type="file" id="csvFile" accept=".csv" />
+            <select id="invoicePropertySelect">
+              <option value="">Select property...</option>
+            </select>
+            <button class="btn-primary" onclick="uploadCSV()" style="width: 100%;">Upload CSV</button>
+            <div id="importResult" class="mt-2"></div>
+          </div>
+        </div>
+
+        <!-- Reports Page -->
+        <div id="reportsPage" class="page">
+          <div class="card">
+            <h3>📈 Monthly Report</h3>
+            <div class="input-group">
+              <input id="r_month_year" type="number" placeholder="Year (e.g., 2026)" />
+              <input id="r_month" type="number" placeholder="Month (1-12)" min="1" max="12" />
+              <input id="r_month_prop" type="number" placeholder="Property ID (optional)" />
+            </div>
+            <button class="btn-primary" onclick="getMonthlyReport()" style="width: 100%;">Generate Monthly Report</button>
+            <pre id="monthlyResult" class="mt-2" style="background: var(--primary-light); padding: 1rem; border-radius: 8px; overflow: auto; max-height: 300px;"></pre>
+          </div>
+
+          <div class="card">
+            <h3>📊 Yearly Report</h3>
+            <div class="input-group">
+              <input id="r_yearly_year" type="number" placeholder="Year (e.g., 2026)" />
+              <input id="r_yearly_prop" type="number" placeholder="Property ID (optional)" />
+            </div>
+            <button class="btn-primary" onclick="getYearlyReport()" style="width: 100%;">Generate Yearly Report</button>
+            <pre id="yearlyResult" class="mt-2" style="background: var(--primary-light); padding: 1rem; border-radius: 8px; overflow: auto; max-height: 300px;"></pre>
+          </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settingsPage" class="page">
+          <div class="card">
+            <h3>🎨 Appearance</h3>
+            <div class="toggle-container">
+              <label class="toggle-switch">
+                <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()">
+                <span class="toggle-slider"></span>
+              </label>
+              <span>Dark Mode</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>👤 User Information</h3>
+            <div id="userSettingsInfo">Loading...</div>
+            <button class="btn-danger" onclick="logout()" style="margin-top: 1rem; width: 100%;">
+              🚪 Logout
+            </button>
+          </div>
+
+          <!-- Admin: User Management -->
+          <div class="card" id="adminUserManagement" style="display: none;">
+            <h3>👥 User Management</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">Manage users and their property access permissions</p>
+            <div id="usersList">Loading users...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Global state
+      let currentUser = null;
+      let currentInvPage = 1;
+      let properties = [];
+
+      // Auth functions
+      async function doLogin() {
+        const email = document.getElementById('login_email').value;
+        const password = document.getElementById('login_password').value;
+        const msgEl = document.getElementById('loginMsg');
+
+        if (!email || !password) {
+          msgEl.innerHTML = '<div class="alert danger">Please enter email and password</div>';
+          return;
+        }
+
+        const fd = new URLSearchParams();
+        fd.append('username', email);
+        fd.append('password', password);
+
+        try {
+          const res = await fetch('/api/auth/login', { method: 'POST', body: fd });
+          const data = await res.json();
+
+          if (res.ok && data.access_token) {
+            localStorage.setItem('bb_token', data.access_token);
+            msgEl.innerHTML = '<div class="alert success">Logged in successfully!</div>';
+            setTimeout(() => {
+              showMainApp();
+            }, 500);
+          } else {
+            msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Login failed'}</div>`;
+          }
+        } catch (e) {
+          msgEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      async function doSignup() {
+        const email = document.getElementById('login_email').value;
+        const password = document.getElementById('login_password').value;
+        const msgEl = document.getElementById('loginMsg');
+
+        if (!email || !password) {
+          msgEl.innerHTML = '<div class="alert danger">Please enter email and password</div>';
+          return;
+        }
+
+        const fd = new URLSearchParams();
+        fd.append('name', email.split('@')[0] || email);
+        fd.append('email', email);
+        fd.append('password', password);
+        fd.append('role', 'manager');
+
+        try {
+          const res = await fetch('/api/auth/signup', { method: 'POST', body: fd });
+          const data = await res.json();
+
+          if (res.ok && data.access_token) {
+            localStorage.setItem('bb_token', data.access_token);
+            msgEl.innerHTML = '<div class="alert success">Account created successfully!</div>';
+            setTimeout(() => {
+              showMainApp();
+            }, 500);
+          } else {
+            msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Signup failed'}</div>`;
+          }
+        } catch (e) {
+          msgEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      function logout() {
+        localStorage.removeItem('bb_token');
+        document.getElementById('loginScreen').classList.add('active');
+        document.getElementById('mainApp').classList.remove('active');
+        document.getElementById('login_email').value = '';
+        document.getElementById('login_password').value = '';
+        document.getElementById('loginMsg').innerHTML = '';
+      }
+
+      function authHeaders() {
+        const token = localStorage.getItem('bb_token');
+        return token ? { 'Authorization': 'Bearer ' + token } : {};
+      }
+
+      // Show main app
+      async function showMainApp() {
+        console.log('=== showMainApp called ===');
+        const loginScreen = document.getElementById('loginScreen');
+        const mainApp = document.getElementById('mainApp');
+
+        console.log('Before changes:');
+        console.log('- loginScreen classes:', loginScreen.className);
+        console.log('- mainApp classes:', mainApp.className);
+
+        // Hide login screen
+        loginScreen.classList.remove('active');
+        console.log('Removed active from loginScreen');
+
+        // Show main app
+        mainApp.classList.add('active');
+        console.log('Added active to mainApp');
+
+        console.log('After changes:');
+        console.log('- loginScreen classes:', loginScreen.className);
+        console.log('- mainApp classes:', mainApp.className);
+        console.log('- loginScreen computed display:', window.getComputedStyle(loginScreen).display);
+        console.log('- mainApp computed display:', window.getComputedStyle(mainApp).display);
+
+        // Load data
+        await loadCurrentUser();
+        await fetchProperties();
+        await refreshStats();
+
+        // Show dashboard page
+        showPage('dashboard');
+        console.log('=== Dashboard page activated ===');
+      }
+
+      // Page navigation
+      function showPage(pageName) {
+        console.log('=== showPage called with:', pageName, '===');
+
+        // Hide all pages inside mainApp
+        const allPages = document.querySelectorAll('#mainApp .page');
+        console.log('Found', allPages.length, 'pages inside mainApp');
+        allPages.forEach(p => {
+          p.classList.remove('active');
+          console.log('- Removed active from:', p.id);
+        });
+
+        // Show selected page
+        const pageId = pageName + 'Page';
+        const targetPage = document.getElementById(pageId);
+        if (targetPage) {
+          targetPage.classList.add('active');
+          console.log('- Added active to:', pageId);
+          console.log('- Page computed display:', window.getComputedStyle(targetPage).display);
+        } else {
+          console.error('❌ Page not found:', pageId);
+        }
+
+        // Update nav tabs
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+          tab.classList.remove('active');
+        });
+
+        // Only try to set active tab if there's an event
+        if (typeof event !== 'undefined' && event && event.target) {
+          const clickedTab = event.target.closest('.nav-tab');
+          if (clickedTab) {
+            clickedTab.classList.add('active');
+          }
+        } else {
+          // Set the first tab (dashboard) as active by default
+          const dashboardTab = document.querySelector('.nav-tab');
+          if (dashboardTab) {
+            dashboardTab.classList.add('active');
+          }
+        }
+
+        // Load page-specific data
+        if (pageName === 'inventory') {
+          loadInventory(1);
+        } else if (pageName === 'properties') {
+          renderProperties();
+        } else if (pageName === 'invoices') {
+          populatePropertySelect('invoicePropertySelect');
+        } else if (pageName === 'settings') {
+          loadUserSettings();
+        }
+      }
+
+      // Load current user
+      async function loadCurrentUser() {
+        const token = localStorage.getItem('bb_token');
+        if (!token) return;
+
+        try {
+          const res = await fetch('/api/auth/me', { headers: authHeaders() });
+          if (!res.ok) {
+            document.getElementById('currentUserInfo').innerHTML = '<em class="text-muted">Not logged in</em>';
+            return;
+          }
+
+          currentUser = await res.json();
+          let html = `
+            <p><strong>Name:</strong> ${currentUser.name}</p>
+            <p><strong>Email:</strong> ${currentUser.email}</p>
+            <p><strong>Role:</strong> <span class="badge">${currentUser.role}</span></p>
+          `;
+
+          if (currentUser.current_property_id) {
+            html += `<p><strong>Property ID:</strong> ${currentUser.current_property_id}</p>`;
+          } else {
+            html += `<p><em class="text-muted">No property assigned</em></p>`;
+          }
+
+          document.getElementById('currentUserInfo').innerHTML = html;
+          document.getElementById('userSettingsInfo').innerHTML = html;
+
+          // Show/hide admin sections
+          const isAdmin = currentUser.role === 'admin';
+          const adminSections = ['adminAddProperty', 'adminDeleteProperty', 'adminUserManagement'];
+          adminSections.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isAdmin ? 'block' : 'none';
+          });
+        } catch (e) {
+          console.error('Error loading user:', e);
+        }
+      }
+
+      // Fetch properties
+      async function fetchProperties() {
+        try {
+          const res = await fetch('/api/properties', { headers: authHeaders() });
+          properties = await res.json();
+
+          // Update stats
+          document.getElementById('statActiveProperties').textContent = properties.length;
+
+          // Populate delete select
+          populateDeleteSelect();
+        } catch (e) {
+          console.error('Error fetching properties:', e);
+        }
+      }
+
+      // Render properties
+      function renderProperties() {
+        const container = document.getElementById('propertiesGrid');
+        container.innerHTML = '';
+
+        for (let i = 0; i < 9; i++) {
+          const prop = properties[i];
+          const slot = document.createElement('div');
+          slot.className = 'property-slot' + (prop ? ' filled' : '');
+
+          if (prop) {
+            slot.innerHTML = `
+              <div class="property-name">${prop.name}</div>
+              <div class="property-address">${prop.address || 'No address'}</div>
+              <span class="badge">Property #${prop.id}</span>
+            `;
+          } else {
+            slot.innerHTML = `
+              <div class="property-name text-muted">Empty Slot ${i + 1}</div>
+              <div class="property-address">Available for new property</div>
+            `;
+          }
+
+          container.appendChild(slot);
+        }
+      }
+
+      // Create property
+      async function createProperty() {
+        const name = document.getElementById('newPropName').value.trim();
+        const address = document.getElementById('newPropAddress').value.trim();
+
+        if (!name) {
+          alert('Please enter a property name');
+          return;
+        }
+
+        const fd = new URLSearchParams();
+        fd.append('name', name);
+        fd.append('address', address);
+
+        try {
+          const res = await fetch('/api/properties', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert('Property created successfully!');
+            document.getElementById('newPropName').value = '';
+            document.getElementById('newPropAddress').value = '';
+            await fetchProperties();
+            renderProperties();
+          } else {
+            const data = await res.json();
+            alert(data.detail || 'Error creating property');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      }
+
+      // Delete property
+      async function deleteProperty() {
+        const select = document.getElementById('deletePropertySelect');
+        const id = select.value;
+
+        if (!id) {
+          alert('Please select a property');
+          return;
+        }
+
+        if (!confirm('Are you sure you want to delete this property?')) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/properties/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            alert('Property deleted successfully!');
+            await fetchProperties();
+            renderProperties();
+          } else {
+            const data = await res.json();
+            alert(data.detail || 'Error deleting property');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      }
+
+      // Populate delete select
+      function populateDeleteSelect() {
+        const select = document.getElementById('deletePropertySelect');
+        select.innerHTML = '<option value="">Select a property...</option>';
+
+        properties.forEach(p => {
+          const option = document.createElement('option');
+          option.value = p.id;
+          option.textContent = p.name;
+          select.appendChild(option);
+        });
+      }
+
+      // Populate property select for invoices
+      function populatePropertySelect(selectId) {
+        const select = document.getElementById(selectId);
+        select.innerHTML = '<option value="">Select property...</option>';
+
+        properties.forEach(p => {
+          const option = document.createElement('option');
+          option.value = p.id;
+          option.textContent = p.name;
+          select.appendChild(option);
+        });
+      }
+
+      // Inventory functions
+      async function loadInventory(page) {
+        currentInvPage = page || currentInvPage;
+        const per = document.getElementById('inv_per').value || 10;
+        const prop = document.getElementById('inv_prop').value;
+
+        const params = new URLSearchParams();
+        params.set('page', currentInvPage);
+        params.set('per_page', per);
+        if (prop) params.set('property_id', prop);
+
+        try {
+          const res = await fetch('/api/inventory?' + params.toString(), { headers: authHeaders() });
+          const data = await res.json();
+
+          document.getElementById('invPage').textContent = data.page;
+
+          const table = document.getElementById('invTable');
+          if (!data.items || data.items.length === 0) {
+            table.innerHTML = '<em class="text-muted">No items found</em>';
+            return;
+          }
+
+          let html = '<table><thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Quantity</th><th>Cost</th><th>Property</th></tr></thead><tbody>';
+
+          data.items.forEach(item => {
+            html += `
+              <tr>
+                <td>${item.id}</td>
+                <td><strong>${item.name}</strong></td>
+                <td>${item.description || '-'}</td>
+                <td>${item.quantity}</td>
+                <td>$${item.cost.toFixed(2)}</td>
+                <td>${item.property_id}</td>
+              </tr>
+            `;
+          });
+
+          html += '</tbody></table>';
+          table.innerHTML = html;
+
+          // Update total items stat
+          document.getElementById('statTotalItems').textContent = data.total;
+        } catch (e) {
+          console.error('Error loading inventory:', e);
+          document.getElementById('invTable').innerHTML = `<em class="text-muted">Error: ${e.message}</em>`;
+        }
+      }
+
+      function prevPage() {
+        if (currentInvPage > 1) {
+          currentInvPage--;
+          loadInventory(currentInvPage);
+        }
+      }
+
+      function nextPage() {
+        currentInvPage++;
+        loadInventory(currentInvPage);
+      }
+
+      // Add inventory item
+      async function addInventoryItem() {
+        const name = document.getElementById('new_inv_name').value.trim();
+        const desc = document.getElementById('new_inv_desc').value.trim();
+        const qty = document.getElementById('new_inv_qty').value;
+        const cost = document.getElementById('new_inv_cost').value;
+        const propId = document.getElementById('new_inv_prop').value;
+        const resultEl = document.getElementById('addInvResult');
+
+        if (!name || !propId) {
+          resultEl.innerHTML = '<div class="alert danger">Name and Property ID are required</div>';
+          return;
+        }
+
+        const fd = new URLSearchParams();
+        fd.append('property_id', propId);
+        fd.append('name', name);
+        fd.append('description', desc);
+        fd.append('quantity', qty || 1);
+        fd.append('cost', cost || 0);
+
+        try {
+          const res = await fetch('/api/inventory', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            const item = await res.json();
+            resultEl.innerHTML = '<div class="alert success">Item added successfully!</div>';
+            document.getElementById('new_inv_name').value = '';
+            document.getElementById('new_inv_desc').value = '';
+            document.getElementById('new_inv_qty').value = '1';
+            document.getElementById('new_inv_cost').value = '0.00';
+            loadInventory(1);
+          } else {
+            const data = await res.json();
+            resultEl.innerHTML = `<div class="alert danger">${data.detail || 'Error adding item'}</div>`;
+          }
+        } catch (e) {
+          resultEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      // Upload CSV
+      async function uploadCSV() {
+        const file = document.getElementById('csvFile').files[0];
+        const propId = document.getElementById('invoicePropertySelect').value;
+        const resultEl = document.getElementById('importResult');
+
+        if (!file || !propId) {
+          resultEl.innerHTML = '<div class="alert danger">Please select both a CSV file and a property</div>';
+          return;
+        }
+
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('property_id', propId);
+
+        try {
+          const res = await fetch('/api/import-invoices', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            resultEl.innerHTML = `<div class="alert success">Imported ${data.imported} invoices successfully!</div>`;
+            refreshStats();
+          } else {
+            resultEl.innerHTML = `<div class="alert danger">${data.detail || 'Import failed'}</div>`;
+          }
+        } catch (e) {
+          resultEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      // Reports
+      async function getMonthlyReport() {
+        const year = document.getElementById('r_month_year').value;
+        const month = document.getElementById('r_month').value;
+        const propId = document.getElementById('r_month_prop').value;
+        const resultEl = document.getElementById('monthlyResult');
+
+        if (!year || !month) {
+          resultEl.textContent = 'Please enter year and month';
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set('year', year);
+        params.set('month', month);
+        if (propId) params.set('property_id', propId);
+
+        try {
+          const res = await fetch('/api/reports/monthly?' + params.toString(), { headers: authHeaders() });
+          const data = await res.json();
+          resultEl.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          resultEl.textContent = 'Error: ' + e.message;
+        }
+      }
+
+      async function getYearlyReport() {
+        const year = document.getElementById('r_yearly_year').value;
+        const propId = document.getElementById('r_yearly_prop').value;
+        const resultEl = document.getElementById('yearlyResult');
+
+        if (!year) {
+          resultEl.textContent = 'Please enter year';
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set('year', year);
+        if (propId) params.set('property_id', propId);
+
+        try {
+          const res = await fetch('/api/reports/yearly?' + params.toString(), { headers: authHeaders() });
+          const data = await res.json();
+          resultEl.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          resultEl.textContent = 'Error: ' + e.message;
+        }
+      }
+
+      // Refresh stats
+      async function refreshStats() {
+        try {
+          // Total items
+          const invRes = await fetch('/api/inventory?per_page=1&page=1', { headers: authHeaders() });
+          if (invRes.ok) {
+            const inv = await invRes.json();
+            document.getElementById('statTotalItems').textContent = inv.total ?? 0;
+          }
+
+          // Total spent (current year)
+          const year = new Date().getFullYear();
+          const repRes = await fetch(`/api/reports/yearly?year=${year}`, { headers: authHeaders() });
+          if (repRes.ok) {
+            const rep = await repRes.json();
+            document.getElementById('statTotalSpent').textContent = '$' + (rep.total || 0).toFixed(2);
+          }
+
+          // Properties count
+          document.getElementById('statActiveProperties').textContent = properties.length;
+        } catch (e) {
+          console.error('Error refreshing stats:', e);
+        }
+      }
+
+      // Settings
+      function toggleDarkMode() {
+        const isDark = document.getElementById('darkModeToggle').checked;
+        document.body.classList.toggle('dark-mode', isDark);
+        localStorage.setItem('darkMode', isDark);
+      }
+
+      function initDarkMode() {
+        const isDark = localStorage.getItem('darkMode') === 'true';
+        document.getElementById('darkModeToggle').checked = isDark;
+        document.body.classList.toggle('dark-mode', isDark);
+      }
+
+      async function loadUserSettings() {
+        // User info is already loaded in currentUser
+        if (currentUser) {
+          let html = `
+            <p><strong>Name:</strong> ${currentUser.name}</p>
+            <p><strong>Email:</strong> ${currentUser.email}</p>
+            <p><strong>Role:</strong> <span class="badge">${currentUser.role}</span></p>
+          `;
+
+          if (currentUser.current_property_id) {
+            html += `<p><strong>Property ID:</strong> ${currentUser.current_property_id}</p>`;
+          } else {
+            html += `<p><em class="text-muted">No property assigned</em></p>`;
+          }
+
+          document.getElementById('userSettingsInfo').innerHTML = html;
+
+          // Load user management for admins
+          if (currentUser.role === 'admin') {
+            await loadUserManagement();
+          }
+        }
+      }
+
+      async function loadUserManagement() {
+        try {
+          const res = await fetch('/api/users', { headers: authHeaders() });
+          const users = await res.json();
+
+          let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+
+          for (const user of users) {
+            // Get user's property access
+            const accessRes = await fetch(`/api/users/${user.id}/properties`, { headers: authHeaders() });
+            const userProperties = await accessRes.json();
+
+            html += `
+              <div style="border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem; background: var(--bg-gradient-start);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                  <div>
+                    <h4 style="margin: 0; color: var(--primary);">${user.name}</h4>
+                    <p style="margin: 0.25rem 0; color: var(--text-secondary); font-size: 0.9rem;">${user.email}</p>
+                    <span class="badge" style="display: inline-block; margin-top: 0.25rem;">${user.role}</span>
+                  </div>
+                  <button class="btn-secondary" onclick="editUserRole(${user.id}, '${user.name}', '${user.role}')" style="padding: 0.5rem 1rem;">
+                    ✏️ Edit Role
+                  </button>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                  <strong style="color: var(--text-primary);">Property Access:</strong>
+                  <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            `;
+
+            if (userProperties.length === 0) {
+              html += '<p style="color: var(--text-muted); font-style: italic; margin: 0;">No property access assigned</p>';
+            } else {
+              for (const prop of userProperties) {
+                const permissions = [];
+                if (prop.can_view) permissions.push('View');
+                if (prop.can_edit) permissions.push('Edit');
+                if (prop.can_delete) permissions.push('Delete');
+
+                html += `
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--card-bg); border-radius: 4px; border: 1px solid var(--card-border);">
+                    <div>
+                      <strong>${prop.name}</strong>
+                      ${prop.address ? `<span style="color: var(--text-secondary); font-size: 0.85rem;"> - ${prop.address}</span>` : ''}
+                      <br>
+                      <span style="color: var(--text-secondary); font-size: 0.85rem;">Permissions: ${permissions.join(', ')}</span>
+                    </div>
+                    <button class="btn-danger" onclick="revokePropertyAccess(${user.id}, ${prop.id}, '${user.name}', '${prop.name}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                      Remove
+                    </button>
+                  </div>
+                `;
+              }
+            }
+
+            html += `
+                  </div>
+                  <button class="btn-primary" onclick="showGrantAccessModal(${user.id}, '${user.name}')" style="margin-top: 0.75rem; width: 100%;">
+                    + Grant Property Access
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+
+          html += '</div>';
+
+          document.getElementById('usersList').innerHTML = html;
+        } catch (e) {
+          console.error('Error loading users:', e);
+          document.getElementById('usersList').innerHTML = '<p class="alert danger">Failed to load users</p>';
+        }
+      }
+
+      async function editUserRole(userId, userName, currentRole) {
+        const newRole = prompt(`Change role for ${userName}\n\nCurrent role: ${currentRole}\n\nEnter new role (admin, manager, maintenance, leasing):`, currentRole);
+
+        if (!newRole || newRole === currentRole) return;
+
+        const validRoles = ['admin', 'manager', 'maintenance', 'leasing'];
+        if (!validRoles.includes(newRole.toLowerCase())) {
+          alert('Invalid role! Must be one of: admin, manager, maintenance, leasing');
+          return;
+        }
+
+        try {
+          const fd = new FormData();
+          fd.append('role', newRole.toLowerCase());
+
+          const res = await fetch(`/api/users/${userId}/role`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert(`Role updated successfully for ${userName}`);
+            await loadUserManagement();
+          } else {
+            const data = await res.json();
+            alert(`Failed to update role: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function revokePropertyAccess(userId, propertyId, userName, propertyName) {
+        if (!confirm(`Remove ${userName}'s access to ${propertyName}?`)) return;
+
+        try {
+          const res = await fetch(`/api/users/${userId}/properties/${propertyId}/revoke`, {
+            method: 'POST',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            alert('Access revoked successfully');
+            await loadUserManagement();
+          } else {
+            const data = await res.json();
+            alert(`Failed to revoke access: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      function showGrantAccessModal(userId, userName) {
+        let html = '<div style="margin-bottom: 1rem;">';
+        html += `<p><strong>Grant property access to: ${userName}</strong></p>`;
+        html += '<label style="display: block; margin: 0.5rem 0;">Property:</label>';
+        html += '<select id="grantPropertyId" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text-primary);">';
+        html += '<option value="">Select a property...</option>';
+
+        properties.forEach(prop => {
+          html += `<option value="${prop.id}">${prop.name}${prop.address ? ' - ' + prop.address : ''}</option>`;
+        });
+
+        html += '</select>';
+        html += '<div style="margin-top: 1rem;">';
+        html += '<label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;"><input type="checkbox" id="grantCanView" checked> Can View</label>';
+        html += '<label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;"><input type="checkbox" id="grantCanEdit"> Can Edit</label>';
+        html += '<label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;"><input type="checkbox" id="grantCanDelete"> Can Delete</label>';
+        html += '</div>';
+        html += `<button class="btn-primary" onclick="executeGrantAccess(${userId})" style="width: 100%; margin-top: 1rem;">Grant Access</button>`;
+        html += `<button class="btn-secondary" onclick="loadUserManagement()" style="width: 100%; margin-top: 0.5rem;">Cancel</button>`;
+        html += '</div>';
+
+        document.getElementById('usersList').innerHTML = html;
+      }
+
+      async function executeGrantAccess(userId) {
+        const propertyId = document.getElementById('grantPropertyId').value;
+        const canView = document.getElementById('grantCanView').checked;
+        const canEdit = document.getElementById('grantCanEdit').checked;
+        const canDelete = document.getElementById('grantCanDelete').checked;
+
+        if (!propertyId) {
+          alert('Please select a property');
+          return;
+        }
+
+        try {
+          const fd = new FormData();
+          fd.append('can_view', canView);
+          fd.append('can_edit', canEdit);
+          fd.append('can_delete', canDelete);
+
+          const res = await fetch(`/api/users/${userId}/properties/${propertyId}/grant`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert('Property access granted successfully');
+            await loadUserManagement();
+          } else {
+            const data = await res.json();
+            alert(`Failed to grant access: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      // Initialize
+      window.addEventListener('DOMContentLoaded', () => {
+        initDarkMode();
+
+        const token = localStorage.getItem('bb_token');
+        if (token) {
+          showMainApp();
+        } else {
+          document.getElementById('loginScreen').classList.add('active');
+        }
+      });
+    </script>
+  </body>
+</html>

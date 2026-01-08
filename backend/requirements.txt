@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+openai
+python-multipart
+pandas
+python-dotenv
+numpy
+scipy
+python-jose[cryptography]
+passlib[bcrypt]
+requests
+pytest

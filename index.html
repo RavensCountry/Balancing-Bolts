@@ -820,10 +820,14 @@
         border-radius: 16px;
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         border: 1px solid var(--card-border);
-        display: flex;
+        display: none;
         flex-direction: column;
         z-index: 10000;
         transition: all 0.3s ease;
+      }
+
+      #aiChatWidget.visible {
+        display: flex;
       }
 
       #aiChatWidget.minimized {
@@ -1404,6 +1408,12 @@
         document.getElementById('login_email').value = '';
         document.getElementById('login_password').value = '';
         document.getElementById('loginMsg').innerHTML = '';
+
+        // Hide AI chat widget
+        const chatWidget = document.getElementById('aiChatWidget');
+        if (chatWidget) {
+          chatWidget.classList.remove('visible');
+        }
       }
 
       function authHeaders() {
@@ -1428,6 +1438,12 @@
         // Show main app
         mainApp.classList.add('active');
         console.log('Added active to mainApp');
+
+        // Show AI chat widget
+        const chatWidget = document.getElementById('aiChatWidget');
+        if (chatWidget) {
+          chatWidget.classList.add('visible');
+        }
 
         console.log('After changes:');
         console.log('- loginScreen classes:', loginScreen.className);

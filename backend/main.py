@@ -489,6 +489,28 @@ def update_user_role(
         return {"status": "success", "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
 
 
+@app.delete('/api/users/{user_id}')
+def delete_user(
+    user_id: int,
+    current_user=Depends(auth.require_role('admin'))
+):
+    """Delete a user and all their data (admin only)"""
+    with get_session() as s:
+        user = s.exec(select(User).where(User.id == user_id)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Prevent deleting yourself
+        if user.id == current_user.id:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+        # Delete user (cascade will handle related records)
+        s.delete(user)
+        s.commit()
+
+        return {"status": "success", "message": f"User {user.name} deleted successfully"}
+
+
 # ===== VENDOR QUOTE MANAGEMENT =====
 
 @app.post('/api/vendors/credentials')

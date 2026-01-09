@@ -1080,6 +1080,61 @@
           min-height: 340px;
         }
       }
+
+      /* User Management Tabs */
+      .user-mgmt-tab.active {
+        color: var(--primary) !important;
+        border-bottom-color: var(--primary) !important;
+      }
+
+      .user-mgmt-tab:hover {
+        color: var(--primary);
+        background: var(--primary-light);
+      }
+
+      .employee-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .employee-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--card-shadow-hover);
+        border-color: var(--primary);
+      }
+
+      .employee-role-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .employee-role-badge.admin {
+        background: var(--primary-light);
+        color: var(--primary);
+      }
+
+      .employee-role-badge.manager {
+        background: var(--info-light);
+        color: var(--info);
+      }
+
+      .employee-role-badge.maintenance {
+        background: var(--warning-light);
+        color: var(--warning);
+      }
+
+      .employee-role-badge.leasing {
+        background: var(--success-light);
+        color: var(--success);
+      }
     </style>
   </head>
   <body>
@@ -1325,8 +1380,164 @@
           <!-- Admin: User Management -->
           <div class="card" id="adminUserManagement" style="display: none;">
             <h3>👥 User Management</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">Manage users and their property access permissions</p>
-            <div id="usersList">Loading users...</div>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Manage employees, roles, and permissions</p>
+
+            <!-- User Management Tabs -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--card-border);">
+              <button class="user-mgmt-tab active" onclick="showUserManagementTab('employees')"
+                      style="padding: 0.75rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.2s;">
+                👤 Employees
+              </button>
+              <button class="user-mgmt-tab" onclick="showUserManagementTab('roles')"
+                      style="padding: 0.75rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: all 0.2s;">
+                🎭 Roles & Permissions
+              </button>
+            </div>
+
+            <!-- Employees Tab -->
+            <div id="employeesTab" class="user-mgmt-tab-content">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0;">All Employees</h4>
+                <input type="text" id="employeeSearch" placeholder="Search employees..."
+                       oninput="filterEmployees()"
+                       style="padding: 0.5rem 1rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary); width: 250px;" />
+              </div>
+              <div id="employeesList">Loading employees...</div>
+            </div>
+
+            <!-- Roles Tab -->
+            <div id="rolesTab" class="user-mgmt-tab-content" style="display: none;">
+              <h4 style="margin-bottom: 1.5rem;">Role Permissions</h4>
+              <div id="rolesPermissions">
+                <!-- Admin Role -->
+                <div class="card" style="margin-bottom: 1.5rem; background: var(--primary-light); padding: 1.5rem;">
+                  <h4 style="margin: 0 0 1rem 0; color: var(--primary);">🔑 Admin</h4>
+                  <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">
+                    Full system access with complete control over all features and data.
+                  </p>
+                  <div style="display: grid; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Manage all employees (add, edit, remove, change roles)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>View and manage ALL properties</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Delete any information from the system</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Manage vendor credentials and quotes</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Access all reports and analytics</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Complete system administration</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Manager Role -->
+                <div class="card" style="margin-bottom: 1.5rem; background: var(--info-light); padding: 1.5rem;">
+                  <h4 style="margin: 0 0 1rem 0; color: var(--info);">👨‍💼 Manager</h4>
+                  <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">
+                    Property managers with authority over assigned properties and their staff.
+                  </p>
+                  <div style="display: grid; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Manage employees assigned to their properties only</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>View and edit assigned properties only</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Remove invoices and items from assigned properties</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Add and manage vendor credentials for quotes</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Grant property access to employees for their properties</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot change employee roles</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot delete employees</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Maintenance Role -->
+                <div class="card" style="margin-bottom: 1.5rem; background: var(--warning-light); padding: 1.5rem;">
+                  <h4 style="margin: 0 0 1rem 0; color: var(--warning);">🔧 Maintenance</h4>
+                  <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">
+                    Maintenance staff with access to inventory and work orders for assigned properties.
+                  </p>
+                  <div style="display: grid; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>View inventory for assigned properties</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Add new inventory items</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>Request quotes from vendors</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot delete inventory or invoices</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot manage employees</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Leasing Role -->
+                <div class="card" style="margin-bottom: 1.5rem; background: var(--success-light); padding: 1.5rem;">
+                  <h4 style="margin: 0 0 1rem 0; color: var(--success);">📋 Leasing</h4>
+                  <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">
+                    Leasing agents with read-only access to property information and reports.
+                  </p>
+                  <div style="display: grid; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>View inventory for assigned properties</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--success); font-size: 1.25rem;">✓</span>
+                      <span>View reports and invoices</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot add, edit, or delete data</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="color: var(--danger); font-size: 1.25rem;">✗</span>
+                      <span style="opacity: 0.6;">Cannot manage employees</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2050,78 +2261,366 @@
         }
       }
 
-      async function loadUserManagement() {
+      // User Management Tab Switching
+      function showUserManagementTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.user-mgmt-tab').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        event.target.closest('.user-mgmt-tab').classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.user-mgmt-tab-content').forEach(content => {
+          content.style.display = 'none';
+        });
+
+        if (tabName === 'employees') {
+          document.getElementById('employeesTab').style.display = 'block';
+          loadEmployees();
+        } else if (tabName === 'roles') {
+          document.getElementById('rolesTab').style.display = 'block';
+        }
+      }
+
+      let allEmployees = [];
+
+      async function loadEmployees() {
         try {
           const res = await fetch('/api/users', { headers: authHeaders() });
-          const users = await res.json();
+          allEmployees = await res.json();
 
-          let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+          // Load property access for each employee
+          for (const emp of allEmployees) {
+            const accessRes = await fetch(`/api/users/${emp.id}/properties`, { headers: authHeaders() });
+            emp.properties = await accessRes.json();
+          }
 
-          for (const user of users) {
-            // Get user's property access
-            const accessRes = await fetch(`/api/users/${user.id}/properties`, { headers: authHeaders() });
-            const userProperties = await accessRes.json();
+          displayEmployees(allEmployees);
+        } catch (e) {
+          console.error('Error loading employees:', e);
+          document.getElementById('employeesList').innerHTML = '<p class="alert danger">Failed to load employees</p>';
+        }
+      }
 
-            html += `
-              <div style="border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem; background: var(--bg-gradient-start);">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
-                  <div>
-                    <h4 style="margin: 0; color: var(--primary);">${user.name}</h4>
-                    <p style="margin: 0.25rem 0; color: var(--text-secondary); font-size: 0.9rem;">${user.email}</p>
-                    <span class="badge" style="display: inline-block; margin-top: 0.25rem;">${user.role}</span>
-                  </div>
-                  <button class="btn-secondary" onclick="editUserRole(${user.id}, '${user.name}', '${user.role}')" style="padding: 0.5rem 1rem;">
-                    ✏️ Edit Role
-                  </button>
-                </div>
+      function filterEmployees() {
+        const searchTerm = document.getElementById('employeeSearch').value.toLowerCase();
+        const filtered = allEmployees.filter(emp =>
+          emp.name.toLowerCase().includes(searchTerm) ||
+          emp.email.toLowerCase().includes(searchTerm) ||
+          emp.role.toLowerCase().includes(searchTerm)
+        );
+        displayEmployees(filtered);
+      }
 
-                <div style="margin-top: 1rem;">
-                  <strong style="color: var(--text-primary);">Property Access:</strong>
-                  <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            `;
+      function displayEmployees(employees) {
+        const container = document.getElementById('employeesList');
 
-            if (userProperties.length === 0) {
-              html += '<p style="color: var(--text-muted); font-style: italic; margin: 0;">No property access assigned</p>';
-            } else {
-              for (const prop of userProperties) {
-                const permissions = [];
-                if (prop.can_view) permissions.push('View');
-                if (prop.can_edit) permissions.push('Edit');
-                if (prop.can_delete) permissions.push('Delete');
+        if (employees.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted);">No employees found.</p>';
+          return;
+        }
 
-                html += `
-                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--card-bg); border-radius: 4px; border: 1px solid var(--card-border);">
-                    <div>
-                      <strong>${prop.name}</strong>
-                      ${prop.address ? `<span style="color: var(--text-secondary); font-size: 0.85rem;"> - ${prop.address}</span>` : ''}
-                      <br>
-                      <span style="color: var(--text-secondary); font-size: 0.85rem;">Permissions: ${permissions.join(', ')}</span>
+        let html = '<div style="display: grid; gap: 1rem;">';
+
+        employees.forEach(emp => {
+          const roleIcon = {
+            'admin': '🔑',
+            'manager': '👨‍💼',
+            'maintenance': '🔧',
+            'leasing': '📋'
+          }[emp.role] || '👤';
+
+          const propertyCount = emp.properties?.length || 0;
+
+          html += `
+            <div class="employee-card" onclick="openEmployeeModal(${emp.id})">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem;">
+                    <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                      ${roleIcon}
                     </div>
-                    <button class="btn-danger" onclick="revokePropertyAccess(${user.id}, ${prop.id}, '${user.name}', '${prop.name}')" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-                      Remove
-                    </button>
+                    <div>
+                      <h4 style="margin: 0; color: var(--text-primary);">${emp.name}</h4>
+                      <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.875rem;">${emp.email}</p>
+                    </div>
                   </div>
-                `;
-              }
-            }
+                  <div style="display: flex; gap: 1rem; align-items: center;">
+                    <span class="employee-role-badge ${emp.role}">${emp.role}</span>
+                    <span style="font-size: 0.875rem; color: var(--text-secondary);">
+                      🏠 ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
+                    </span>
+                  </div>
+                </div>
+                <button class="btn-secondary" onclick="event.stopPropagation(); openEmployeeModal(${emp.id})"
+                        style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                  View Details →
+                </button>
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      async function openEmployeeModal(employeeId) {
+        const employee = allEmployees.find(e => e.id === employeeId);
+        if (!employee) return;
+
+        const roleIcon = {
+          'admin': '🔑',
+          'manager': '👨‍💼',
+          'maintenance': '🔧',
+          'leasing': '📋'
+        }[employee.role] || '👤';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 20000;';
+        modal.onclick = (e) => {  if (e.target === modal) modal.remove(); };
+
+        let html = `
+          <div class="card" style="max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 2rem;" onclick="event.stopPropagation();">
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid var(--card-border);">
+              <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; font-size: 2rem;">
+                ${roleIcon}
+              </div>
+              <div style="flex: 1;">
+                <h3 style="margin: 0;">${employee.name}</h3>
+                <p style="margin: 0.25rem 0; color: var(--text-secondary);">${employee.email}</p>
+                <span class="employee-role-badge ${employee.role}" style="display: inline-block; margin-top: 0.5rem;">${employee.role}</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 1rem 0;">Change Role</h4>
+              <select id="employeeRoleSelect" class="form-input">
+                <option value="admin" ${employee.role === 'admin' ? 'selected' : ''}>Admin</option>
+                <option value="manager" ${employee.role === 'manager' ? 'selected' : ''}>Manager</option>
+                <option value="maintenance" ${employee.role === 'maintenance' ? 'selected' : ''}>Maintenance</option>
+                <option value="leasing" ${employee.role === 'leasing' ? 'selected' : ''}>Leasing</option>
+              </select>
+              <button class="btn-primary" onclick="changeEmployeeRole(${employee.id})" style="width: 100%; margin-top: 0.5rem;">
+                Update Role
+              </button>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 1rem 0;">Property Access (${employee.properties?.length || 0})</h4>
+        `;
+
+        if (employee.properties && employee.properties.length > 0) {
+          html += '<div style="display: grid; gap: 0.75rem;">';
+          employee.properties.forEach(prop => {
+            const permissions = [];
+            if (prop.can_view) permissions.push('View');
+            if (prop.can_edit) permissions.push('Edit');
+            if (prop.can_delete) permissions.push('Delete');
 
             html += `
+              <div style="background: var(--bg-gradient-start); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                  <div>
+                    <strong>${prop.name}</strong>
+                    ${prop.address ? `<p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.875rem;">${prop.address}</p>` : ''}
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                      <strong>Permissions:</strong> ${permissions.join(', ')}
+                    </p>
                   </div>
-                  <button class="btn-primary" onclick="showGrantAccessModal(${user.id}, '${user.name}')" style="margin-top: 0.75rem; width: 100%;">
-                    + Grant Property Access
+                  <button class="btn-danger" onclick="removePropertyAccess(${employee.id}, ${prop.id})"
+                          style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                    Remove
                   </button>
                 </div>
               </div>
             `;
-          }
-
+          });
           html += '</div>';
-
-          document.getElementById('usersList').innerHTML = html;
-        } catch (e) {
-          console.error('Error loading users:', e);
-          document.getElementById('usersList').innerHTML = '<p class="alert danger">Failed to load users</p>';
+        } else {
+          html += '<p style="color: var(--text-muted); font-style: italic;">No property access assigned yet.</p>';
         }
+
+        html += `
+              <button class="btn-primary" onclick="showAddPropertyAccessModal(${employee.id})" style="width: 100%; margin-top: 1rem;">
+                + Grant Property Access
+              </button>
+            </div>
+
+            <div style="padding-top: 1.5rem; border-top: 2px solid var(--card-border);">
+              <button class="btn-danger" onclick="deleteEmployee(${employee.id}, '${employee.name}')" style="width: 100%;">
+                🗑️ Delete Employee & Remove Login
+              </button>
+              <button class="btn-secondary" onclick="this.closest('[style*=fixed]').remove()" style="width: 100%; margin-top: 0.5rem;">
+                Close
+              </button>
+            </div>
+          </div>
+        `;
+
+        modal.innerHTML = html;
+        document.body.appendChild(modal);
+      }
+
+      async function changeEmployeeRole(employeeId) {
+        const newRole = document.getElementById('employeeRoleSelect').value;
+
+        try {
+          const fd = new FormData();
+          fd.append('role', newRole);
+
+          const res = await fetch(`/api/users/${employeeId}/role`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert('Role updated successfully!');
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to update role: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function removePropertyAccess(employeeId, propertyId) {
+        if (!confirm('Remove this property access?')) return;
+
+        try {
+          const res = await fetch(`/api/users/${employeeId}/properties/${propertyId}/revoke`, {
+            method: 'POST',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            alert('Property access removed successfully!');
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to remove access: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      function showAddPropertyAccessModal(employeeId) {
+        const employee = allEmployees.find(e => e.id === employeeId);
+        if (!employee) return;
+
+        let html = `
+          <div style="background: var(--bg-gradient-start); border: 1px solid var(--card-border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0;">
+            <h4 style="margin: 0 0 1rem 0;">Grant Property Access to ${employee.name}</h4>
+            <div style="display: grid; gap: 1rem;">
+              <div>
+                <label>Select Property</label>
+                <select id="newAccessPropertyId" class="form-input">
+                  <option value="">Choose a property...</option>
+                  ${properties.map(p => `<option value="${p.id}">${p.name}${p.address ? ' - ' + p.address : ''}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <strong>Permissions:</strong>
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;">
+                  <input type="checkbox" id="newAccessCanView" checked> Can View
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;">
+                  <input type="checkbox" id="newAccessCanEdit"> Can Edit
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;">
+                  <input type="checkbox" id="newAccessCanDelete"> Can Delete
+                </label>
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn-primary" onclick="grantPropertyAccess(${employeeId})" style="flex: 1;">
+                  Grant Access
+                </button>
+                <button class="btn-secondary" onclick="this.closest('[style*=background]').remove(); openEmployeeModal(${employeeId})" style="flex: 1;">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Replace the modal content
+        document.querySelector('[style*="position: fixed"] .card').insertAdjacentHTML('beforeend', html);
+      }
+
+      async function grantPropertyAccess(employeeId) {
+        const propertyId = document.getElementById('newAccessPropertyId').value;
+        const canView = document.getElementById('newAccessCanView').checked;
+        const canEdit = document.getElementById('newAccessCanEdit').checked;
+        const canDelete = document.getElementById('newAccessCanDelete').checked;
+
+        if (!propertyId) {
+          alert('Please select a property');
+          return;
+        }
+
+        try {
+          const fd = new FormData();
+          fd.append('can_view', canView);
+          fd.append('can_edit', canEdit);
+          fd.append('can_delete', canDelete);
+
+          const res = await fetch(`/api/users/${employeeId}/properties/${propertyId}/grant`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert('Property access granted successfully!');
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to grant access: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function deleteEmployee(employeeId, employeeName) {
+        if (!confirm(`⚠️ WARNING ⚠️\n\nThis will permanently delete ${employeeName} and remove their login access.\n\nAre you sure you want to continue?`)) {
+          return;
+        }
+
+        // Double confirmation
+        if (!confirm(`This action cannot be undone. Delete ${employeeName}?`)) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/users/${employeeId}`, {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            alert(`${employeeName} has been deleted successfully.`);
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to delete employee: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      // Legacy function for backward compatibility
+      async function loadUserManagement() {
+        await loadEmployees();
       }
 
       async function editUserRole(userId, userName, currentRole) {

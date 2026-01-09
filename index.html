@@ -1140,6 +1140,10 @@
             <span class="nav-tab-icon">📄</span>
             <span>Invoices</span>
           </button>
+          <button class="nav-tab" onclick="showPage('quotes')">
+            <span class="nav-tab-icon">💰</span>
+            <span>Quotes</span>
+          </button>
           <button class="nav-tab" onclick="showPage('reports')">
             <span class="nav-tab-icon">📈</span>
             <span>Reports</span>
@@ -1323,6 +1327,105 @@
             <h3>👥 User Management</h3>
             <p style="color: var(--text-secondary); margin-bottom: 1rem;">Manage users and their property access permissions</p>
             <div id="usersList">Loading users...</div>
+          </div>
+        </div>
+
+        <!-- Quotes Page -->
+        <div id="quotesPage" class="page">
+          <div class="card">
+            <h3>💰 Vendor Quote Comparison</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+              Request quotes from multiple vendors automatically. Save vendor logins once and get instant price comparisons.
+            </p>
+
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+              <button class="btn-primary" onclick="showVendorCredentials()">🔑 Manage Vendor Logins</button>
+              <button class="btn-primary" onclick="showNewQuoteRequest()">➕ New Quote Request</button>
+            </div>
+
+            <!-- Vendor Credentials Section -->
+            <div id="vendorCredentialsSection" style="display: none;">
+              <h4 style="margin-bottom: 1rem;">Vendor Login Credentials</h4>
+              <div id="vendorCredentialsList"></div>
+
+              <h4 style="margin-top: 2rem; margin-bottom: 1rem;">Add New Vendor</h4>
+              <form id="addVendorForm" onsubmit="addVendorCredential(event)" style="display: grid; gap: 1rem;">
+                <div>
+                  <label>Vendor Name</label>
+                  <select id="newVendorName" class="form-input" required>
+                    <option value="">Select vendor...</option>
+                    <option value="Home Depot">Home Depot</option>
+                    <option value="Lowe's">Lowe's</option>
+                    <option value="Grainger">Grainger</option>
+                    <option value="Ferguson">Ferguson</option>
+                    <option value="Fastenal">Fastenal</option>
+                    <option value="Menards">Menards</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Vendor URL</label>
+                  <input type="url" id="newVendorUrl" class="form-input" placeholder="https://www.homedepot.com" required />
+                </div>
+                <div>
+                  <label>Your Username/Email</label>
+                  <input type="text" id="newVendorUsername" class="form-input" required />
+                </div>
+                <div>
+                  <label>Your Password</label>
+                  <input type="password" id="newVendorPassword" class="form-input" required />
+                  <p style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">
+                    🔒 Your password is encrypted and stored securely
+                  </p>
+                </div>
+                <div>
+                  <label>Property (Optional)</label>
+                  <select id="newVendorProperty" class="form-input">
+                    <option value="">All Properties</option>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                  <button type="submit" class="btn-primary">Save Credentials</button>
+                  <button type="button" class="btn-secondary" onclick="hideVendorCredentials()">Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- New Quote Request Form -->
+            <div id="newQuoteRequestSection" style="display: none;">
+              <h4 style="margin-bottom: 1rem;">Request New Quote</h4>
+              <form id="newQuoteForm" onsubmit="createQuoteRequest(event)" style="display: grid; gap: 1rem;">
+                <div>
+                  <label>What do you need a quote for?</label>
+                  <input type="text" id="quoteItemDescription" class="form-input"
+                         placeholder="e.g., Ceiling fan, LED light bulbs, Paint, etc." required />
+                </div>
+                <div>
+                  <label>Quantity</label>
+                  <input type="number" id="quoteQuantity" class="form-input" value="1" min="1" required />
+                </div>
+                <div>
+                  <label>Property (Optional)</label>
+                  <select id="quoteProperty" class="form-input">
+                    <option value="">Select property...</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Notes (Optional)</label>
+                  <textarea id="quoteNotes" class="form-input" rows="3"
+                            placeholder="Any specific requirements or details..."></textarea>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                  <button type="submit" class="btn-primary">Create & Fetch Quotes</button>
+                  <button type="button" class="btn-secondary" onclick="hideNewQuoteRequest()">Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Quote Requests List -->
+            <div id="quoteRequestsList">
+              <h4 style="margin-top: 2rem; margin-bottom: 1rem;">Your Quote Requests</h4>
+              <div id="quoteRequestsContent"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1510,6 +1613,8 @@
           renderProperties();
         } else if (pageName === 'invoices') {
           populatePropertySelect('invoicePropertySelect');
+        } else if (pageName === 'quotes') {
+          loadQuoteRequests();
         } else if (pageName === 'settings') {
           loadUserSettings();
         }
@@ -2129,6 +2234,458 @@
           }
         } catch (e) {
           alert(`Error: ${e.message}`);
+        }
+      }
+
+      // ===== QUOTES MANAGEMENT =====
+
+      function showVendorCredentials() {
+        document.getElementById('vendorCredentialsSection').style.display = 'block';
+        document.getElementById('newQuoteRequestSection').style.display = 'none';
+        loadVendorCredentials();
+        populateVendorPropertyDropdown();
+      }
+
+      function hideVendorCredentials() {
+        document.getElementById('vendorCredentialsSection').style.display = 'none';
+        document.getElementById('addVendorForm').reset();
+      }
+
+      function showNewQuoteRequest() {
+        document.getElementById('newQuoteRequestSection').style.display = 'block';
+        document.getElementById('vendorCredentialsSection').style.display = 'none';
+        populateQuotePropertyDropdown();
+      }
+
+      function hideNewQuoteRequest() {
+        document.getElementById('newQuoteRequestSection').style.display = 'none';
+        document.getElementById('newQuoteForm').reset();
+      }
+
+      function populateVendorPropertyDropdown() {
+        const select = document.getElementById('newVendorProperty');
+        select.innerHTML = '<option value="">All Properties</option>';
+        properties.forEach(prop => {
+          select.innerHTML += `<option value="${prop.id}">${prop.name}</option>`;
+        });
+      }
+
+      function populateQuotePropertyDropdown() {
+        const select = document.getElementById('quoteProperty');
+        select.innerHTML = '<option value="">Select property...</option>';
+        properties.forEach(prop => {
+          select.innerHTML += `<option value="${prop.id}">${prop.name}</option>`;
+        });
+      }
+
+      async function loadVendorCredentials() {
+        try {
+          const res = await fetch('/api/vendors/credentials', {
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const credentials = await res.json();
+            displayVendorCredentials(credentials);
+          } else {
+            document.getElementById('vendorCredentialsList').innerHTML =
+              '<p style="color: var(--danger);">Failed to load vendor credentials</p>';
+          }
+        } catch (e) {
+          console.error('Error loading credentials:', e);
+          document.getElementById('vendorCredentialsList').innerHTML =
+            '<p style="color: var(--danger);">Error loading credentials</p>';
+        }
+      }
+
+      function displayVendorCredentials(credentials) {
+        const container = document.getElementById('vendorCredentialsList');
+
+        if (credentials.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted);">No vendor credentials saved yet. Add your first vendor below!</p>';
+          return;
+        }
+
+        let html = '<div style="display: grid; gap: 1rem;">';
+
+        credentials.forEach(cred => {
+          const propertyName = cred.property_id ?
+            (properties.find(p => p.id === cred.property_id)?.name || 'Unknown Property') :
+            'All Properties';
+
+          html += `
+            <div class="card" style="background: var(--primary-light); padding: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                  <h4 style="margin: 0 0 0.5rem 0;">${cred.vendor_name}</h4>
+                  <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0.25rem 0;">
+                    <strong>Username:</strong> ${cred.username}
+                  </p>
+                  <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0.25rem 0;">
+                    <strong>Property:</strong> ${propertyName}
+                  </p>
+                  <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0.25rem 0;">
+                    <strong>Status:</strong> <span class="badge ${cred.is_active ? 'success' : 'danger'}">
+                      ${cred.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </p>
+                </div>
+                <button class="btn-danger" onclick="deleteVendorCredential(${cred.id})"
+                        style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                  Delete
+                </button>
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      async function addVendorCredential(event) {
+        event.preventDefault();
+
+        const formData = new FormData();
+        formData.append('vendor_name', document.getElementById('newVendorName').value);
+        formData.append('vendor_url', document.getElementById('newVendorUrl').value);
+        formData.append('username', document.getElementById('newVendorUsername').value);
+        formData.append('password', document.getElementById('newVendorPassword').value);
+
+        const propertyId = document.getElementById('newVendorProperty').value;
+        if (propertyId) {
+          formData.append('property_id', propertyId);
+        }
+
+        try {
+          const res = await fetch('/api/vendors/credentials', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: formData
+          });
+
+          if (res.ok) {
+            alert('Vendor credentials saved successfully!');
+            document.getElementById('addVendorForm').reset();
+            await loadVendorCredentials();
+          } else {
+            const data = await res.json();
+            alert(`Failed to save credentials: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function deleteVendorCredential(credentialId) {
+        if (!confirm('Are you sure you want to delete this vendor credential?')) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/vendors/credentials/${credentialId}`, {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            alert('Vendor credential deleted successfully');
+            await loadVendorCredentials();
+          } else {
+            const data = await res.json();
+            alert(`Failed to delete credential: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function createQuoteRequest(event) {
+        event.preventDefault();
+
+        const formData = new FormData();
+        formData.append('item_description', document.getElementById('quoteItemDescription').value);
+        formData.append('quantity', document.getElementById('quoteQuantity').value);
+
+        const propertyId = document.getElementById('quoteProperty').value;
+        if (propertyId) {
+          formData.append('property_id', propertyId);
+        }
+
+        const notes = document.getElementById('quoteNotes').value;
+        if (notes) {
+          formData.append('notes', notes);
+        }
+
+        try {
+          const res = await fetch('/api/quotes/request', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const requestId = data.quote_request.id;
+
+            alert('Quote request created! Fetching quotes from vendors...');
+
+            // Automatically fetch quotes
+            await fetchQuotesForRequest(requestId);
+
+            document.getElementById('newQuoteForm').reset();
+            hideNewQuoteRequest();
+            await loadQuoteRequests();
+          } else {
+            const data = await res.json();
+            alert(`Failed to create quote request: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function fetchQuotesForRequest(requestId) {
+        try {
+          const res = await fetch(`/api/quotes/request/${requestId}/fetch`, {
+            method: 'POST',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            alert(`Successfully fetched ${data.quote_count} quotes!`);
+            await loadQuoteRequests();
+          } else {
+            const data = await res.json();
+            alert(`Failed to fetch quotes: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error fetching quotes: ${e.message}`);
+        }
+      }
+
+      async function loadQuoteRequests() {
+        try {
+          const res = await fetch('/api/quotes/requests', {
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const requests = await res.json();
+            displayQuoteRequests(requests);
+          } else {
+            document.getElementById('quoteRequestsContent').innerHTML =
+              '<p style="color: var(--danger);">Failed to load quote requests</p>';
+          }
+        } catch (e) {
+          console.error('Error loading quote requests:', e);
+          document.getElementById('quoteRequestsContent').innerHTML =
+            '<p style="color: var(--danger);">Error loading quote requests</p>';
+        }
+      }
+
+      function displayQuoteRequests(requests) {
+        const container = document.getElementById('quoteRequestsContent');
+
+        if (requests.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted);">No quote requests yet. Create your first request above!</p>';
+          return;
+        }
+
+        let html = '<div style="display: grid; gap: 1rem;">';
+
+        // Sort by most recent first
+        requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        requests.forEach(req => {
+          const statusClass = req.status === 'completed' ? 'success' :
+                             req.status === 'failed' ? 'danger' :
+                             req.status === 'fetching' ? 'warning' : '';
+
+          html += `
+            <div class="card" style="padding: 1.5rem; cursor: pointer;"
+                 onclick="viewQuoteDetails(${req.id})">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div>
+                  <h4 style="margin: 0 0 0.5rem 0;">${req.item_description}</h4>
+                  <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">
+                    Quantity: ${req.quantity} | Requested: ${new Date(req.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span class="badge ${statusClass}">${req.status.toUpperCase()}</span>
+              </div>
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <span class="badge">${req.quote_count} quotes</span>
+                ${req.quote_count > 0 ? '<button class="btn-secondary" onclick="event.stopPropagation(); generateQuoteEmail(' + req.id + ')" style="padding: 0.5rem 1rem; font-size: 0.875rem;">📧 Generate Email</button>' : ''}
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      async function viewQuoteDetails(requestId) {
+        try {
+          const res = await fetch(`/api/quotes/request/${requestId}`, {
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            showQuoteDetailsModal(data);
+          } else {
+            alert('Failed to load quote details');
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      function showQuoteDetailsModal(quoteRequest) {
+        const quotes = quoteRequest.quotes || [];
+
+        // Sort by price
+        quotes.sort((a, b) => a.total_price - b.total_price);
+
+        let html = `
+          <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+                      display: flex; align-items: center; justify-content: center; z-index: 20000;"
+               onclick="this.remove()">
+            <div class="card" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 2rem;"
+                 onclick="event.stopPropagation();">
+              <h3 style="margin-top: 0;">Quote Comparison: ${quoteRequest.item_description}</h3>
+              <p style="color: var(--text-secondary);">
+                Quantity: ${quoteRequest.quantity} | Property: ${quoteRequest.property_name || 'N/A'}
+              </p>
+        `;
+
+        if (quotes.length === 0) {
+          html += '<p style="color: var(--text-muted); margin: 2rem 0;">No quotes available yet.</p>';
+        } else {
+          html += '<div style="display: grid; gap: 1rem; margin-top: 1.5rem;">';
+
+          quotes.forEach((quote, index) => {
+            const bestPrice = index === 0 ? 'background: var(--success-light); border: 2px solid var(--success);' : '';
+
+            html += `
+              <div class="card" style="padding: 1.5rem; ${bestPrice}">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                  <div>
+                    <h4 style="margin: 0 0 0.5rem 0;">${quote.vendor_name} ${index === 0 ? '⭐ BEST PRICE' : ''}</h4>
+                    <p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Product:</strong> ${quote.item_name}</p>
+                    ${quote.vendor_item_number ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Item #:</strong> ${quote.vendor_item_number}</p>` : ''}
+                    ${quote.availability ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Availability:</strong> ${quote.availability}</p>` : ''}
+                    ${quote.vendor_url ? `<a href="${quote.vendor_url}" target="_blank" class="btn-secondary" style="margin-top: 0.5rem; display: inline-block; padding: 0.5rem 1rem; font-size: 0.875rem;">View on Website</a>` : ''}
+                  </div>
+                  <div style="text-align: right;">
+                    <p style="font-size: 2rem; font-weight: bold; color: var(--success); margin: 0;">
+                      $${quote.total_price.toFixed(2)}
+                    </p>
+                    <p style="font-size: 0.875rem; color: var(--text-muted); margin: 0;">
+                      $${quote.unit_price.toFixed(2)} each
+                    </p>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          html += '</div>';
+
+          // Add savings calculation
+          if (quotes.length > 1) {
+            const bestPrice = quotes[0].total_price;
+            const worstPrice = quotes[quotes.length - 1].total_price;
+            const savings = worstPrice - bestPrice;
+            const savingsPct = (savings / worstPrice * 100).toFixed(1);
+
+            html += `
+              <div style="margin-top: 1.5rem; padding: 1rem; background: var(--info-light); border-radius: 8px;">
+                <p style="margin: 0; font-weight: 600;">
+                  💰 Potential Savings: $${savings.toFixed(2)} (${savingsPct}%) by choosing the best price
+                </p>
+              </div>
+            `;
+          }
+        }
+
+        html += `
+              <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                <button class="btn-primary" onclick="generateQuoteEmail(${quoteRequest.id})">📧 Generate Email</button>
+                <button class="btn-secondary" onclick="this.closest('[onclick*=remove]').remove()">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', html);
+      }
+
+      async function generateQuoteEmail(requestId) {
+        try {
+          const res = await fetch(`/api/quotes/request/${requestId}/email`, {
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            showEmailPreview(data.html);
+          } else {
+            alert('Failed to generate email');
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      function showEmailPreview(html) {
+        const modal = `
+          <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+                      display: flex; align-items: center; justify-content: center; z-index: 30000;"
+               onclick="this.remove()">
+            <div class="card" style="max-width: 900px; width: 95%; max-height: 95vh; overflow-y: auto; padding: 2rem;"
+                 onclick="event.stopPropagation();">
+              <h3 style="margin-top: 0;">Email Preview</h3>
+              <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                Copy the HTML below and paste into your email client, or use the preview below.
+              </p>
+
+              <div style="margin-bottom: 1.5rem;">
+                <button class="btn-primary" onclick="copyEmailHTML()">📋 Copy HTML to Clipboard</button>
+                <button class="btn-secondary" onclick="this.closest('[onclick*=remove]').remove()">Close</button>
+              </div>
+
+              <div style="border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem; background: white; margin-bottom: 1rem;">
+                <h4 style="margin-top: 0; color: var(--text-primary);">Email Preview:</h4>
+                <div style="border: 1px solid #e2e8f0; border-radius: 4px; overflow: auto;">
+                  ${html}
+                </div>
+              </div>
+
+              <div>
+                <h4 style="margin-top: 1.5rem; color: var(--text-primary);">HTML Code:</h4>
+                <textarea id="emailHTMLCode" readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 0.875rem; padding: 1rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start);">${html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Store HTML for copying
+        window.currentEmailHTML = html;
+
+        document.body.insertAdjacentHTML('beforeend', modal);
+      }
+
+      function copyEmailHTML() {
+        if (window.currentEmailHTML) {
+          navigator.clipboard.writeText(window.currentEmailHTML).then(() => {
+            alert('Email HTML copied to clipboard! You can now paste it into your email client.');
+          }).catch(err => {
+            alert('Failed to copy to clipboard. Please manually select and copy the HTML code.');
+          });
         }
       }
 

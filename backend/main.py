@@ -10,11 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
 from .database import get_session
-from .models import User
+from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property
 from .database import init_db
 from . import ai
 from . import auth
 from . import resman
+from . import vendor_quotes
 
 def configure_logging():
     level_name = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -486,3 +487,372 @@ def update_user_role(
         s.refresh(user)
 
         return {"status": "success", "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
+
+
+# ===== VENDOR QUOTE MANAGEMENT =====
+
+@app.post('/api/vendors/credentials')
+async def add_vendor_credential(
+    vendor_name: str = Form(...),
+    vendor_url: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    property_id: int = Form(None),
+    current_user=Depends(auth.require_role('manager'))
+):
+    """Add vendor login credentials (manager/admin only)"""
+    encrypted_password = vendor_quotes.encrypt_password(password)
+
+    with get_session() as s:
+        # Check if property exists if provided
+        if property_id:
+            prop = s.exec(select(Property).where(Property.id == property_id)).first()
+            if not prop:
+                raise HTTPException(status_code=404, detail="Property not found")
+
+        credential = VendorCredential(
+            vendor_name=vendor_name,
+            vendor_url=vendor_url,
+            username=username,
+            encrypted_password=encrypted_password,
+            user_id=current_user.id,
+            property_id=property_id
+        )
+        s.add(credential)
+        s.commit()
+        s.refresh(credential)
+
+        return {
+            "status": "success",
+            "credential": {
+                "id": credential.id,
+                "vendor_name": credential.vendor_name,
+                "vendor_url": credential.vendor_url,
+                "username": credential.username,
+                "property_id": credential.property_id,
+                "created_at": credential.created_at.isoformat()
+            }
+        }
+
+
+@app.get('/api/vendors/credentials')
+def list_vendor_credentials(current_user=Depends(auth.get_current_user)):
+    """List all vendor credentials for the current user"""
+    with get_session() as s:
+        # Admins and managers see all credentials
+        if current_user.role in ['admin', 'manager']:
+            credentials = s.exec(select(VendorCredential)).all()
+        else:
+            # Other users only see credentials they added
+            credentials = s.exec(
+                select(VendorCredential).where(VendorCredential.user_id == current_user.id)
+            ).all()
+
+        return [{
+            "id": c.id,
+            "vendor_name": c.vendor_name,
+            "vendor_url": c.vendor_url,
+            "username": c.username,
+            "property_id": c.property_id,
+            "is_active": c.is_active,
+            "last_used": c.last_used.isoformat() if c.last_used else None,
+            "created_at": c.created_at.isoformat()
+        } for c in credentials]
+
+
+@app.delete('/api/vendors/credentials/{credential_id}')
+def delete_vendor_credential(
+    credential_id: int,
+    current_user=Depends(auth.require_role('manager'))
+):
+    """Delete a vendor credential (manager/admin only)"""
+    with get_session() as s:
+        credential = s.exec(
+            select(VendorCredential).where(VendorCredential.id == credential_id)
+        ).first()
+
+        if not credential:
+            raise HTTPException(status_code=404, detail="Credential not found")
+
+        # Only the creator or admin can delete
+        if credential.user_id != current_user.id and current_user.role != 'admin':
+            raise HTTPException(status_code=403, detail="Not authorized to delete this credential")
+
+        s.delete(credential)
+        s.commit()
+
+        return {"status": "success"}
+
+
+@app.post('/api/quotes/request')
+async def create_quote_request(
+    item_description: str = Form(...),
+    quantity: int = Form(1),
+    property_id: int = Form(None),
+    notes: str = Form(None),
+    current_user=Depends(auth.get_current_user)
+):
+    """Create a new quote request"""
+    with get_session() as s:
+        # Validate property if provided
+        if property_id:
+            prop = s.exec(select(Property).where(Property.id == property_id)).first()
+            if not prop:
+                raise HTTPException(status_code=404, detail="Property not found")
+
+        quote_request = QuoteRequest(
+            property_id=property_id,
+            user_id=current_user.id,
+            item_description=item_description,
+            quantity=quantity,
+            notes=notes
+        )
+        s.add(quote_request)
+        s.commit()
+        s.refresh(quote_request)
+
+        return {
+            "status": "success",
+            "quote_request": {
+                "id": quote_request.id,
+                "item_description": quote_request.item_description,
+                "quantity": quote_request.quantity,
+                "property_id": quote_request.property_id,
+                "status": quote_request.status,
+                "created_at": quote_request.created_at.isoformat()
+            }
+        }
+
+
+@app.post('/api/quotes/request/{request_id}/fetch')
+async def fetch_quotes(
+    request_id: int,
+    current_user=Depends(auth.get_current_user)
+):
+    """Fetch quotes from all configured vendors for a quote request"""
+    with get_session() as s:
+        # Get the quote request
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == request_id)
+        ).first()
+
+        if not quote_request:
+            raise HTTPException(status_code=404, detail="Quote request not found")
+
+        # Update status to fetching
+        quote_request.status = QuoteStatus.fetching
+        s.add(quote_request)
+        s.commit()
+
+        # Get all active vendor credentials
+        credentials = s.exec(
+            select(VendorCredential).where(VendorCredential.is_active == True)
+        ).all()
+
+        if not credentials:
+            quote_request.status = QuoteStatus.failed
+            s.add(quote_request)
+            s.commit()
+            raise HTTPException(status_code=400, detail="No vendor credentials configured")
+
+        # Prepare credential data for fetching
+        creds_data = [{
+            'vendor_name': c.vendor_name,
+            'username': c.username,
+            'encrypted_password': c.encrypted_password
+        } for c in credentials]
+
+        try:
+            # Fetch quotes from vendors
+            quotes_data = await vendor_quotes.fetch_quotes_from_vendors(
+                quote_request.item_description,
+                quote_request.quantity,
+                creds_data
+            )
+
+            # Save quotes to database
+            for quote_data in quotes_data:
+                quote = Quote(
+                    quote_request_id=request_id,
+                    vendor_name=quote_data.get('vendor_name', 'Unknown'),
+                    item_name=quote_data.get('item_name', quote_request.item_description),
+                    item_description=quote_data.get('item_description'),
+                    unit_price=quote_data.get('unit_price', 0.0),
+                    quantity=quote_request.quantity,
+                    total_price=quote_data.get('total_price', 0.0),
+                    vendor_item_number=quote_data.get('vendor_item_number'),
+                    availability=quote_data.get('availability'),
+                    vendor_url=quote_data.get('vendor_url'),
+                    raw_data=quote_data.get('raw_data')
+                )
+                s.add(quote)
+
+            # Update request status
+            quote_request.status = QuoteStatus.completed
+            s.add(quote_request)
+            s.commit()
+
+            # Return the quotes
+            quotes = s.exec(
+                select(Quote).where(Quote.quote_request_id == request_id)
+            ).all()
+
+            return {
+                "status": "success",
+                "quote_count": len(quotes),
+                "quotes": [{
+                    "id": q.id,
+                    "vendor_name": q.vendor_name,
+                    "item_name": q.item_name,
+                    "unit_price": q.unit_price,
+                    "quantity": q.quantity,
+                    "total_price": q.total_price,
+                    "availability": q.availability,
+                    "vendor_url": q.vendor_url
+                } for q in quotes]
+            }
+
+        except Exception as e:
+            quote_request.status = QuoteStatus.failed
+            s.add(quote_request)
+            s.commit()
+            logger.exception(f"Error fetching quotes: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching quotes: {str(e)}")
+
+
+@app.get('/api/quotes/request/{request_id}')
+def get_quote_request(request_id: int, current_user=Depends(auth.get_current_user)):
+    """Get a quote request with all its quotes"""
+    with get_session() as s:
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == request_id)
+        ).first()
+
+        if not quote_request:
+            raise HTTPException(status_code=404, detail="Quote request not found")
+
+        quotes = s.exec(
+            select(Quote).where(Quote.quote_request_id == request_id)
+        ).all()
+
+        # Get property and user info
+        property_name = None
+        if quote_request.property_id:
+            prop = s.exec(select(Property).where(Property.id == quote_request.property_id)).first()
+            if prop:
+                property_name = prop.name
+
+        user = s.exec(select(User).where(User.id == quote_request.user_id)).first()
+        user_name = user.name if user else "Unknown"
+
+        return {
+            "id": quote_request.id,
+            "item_description": quote_request.item_description,
+            "quantity": quote_request.quantity,
+            "property_id": quote_request.property_id,
+            "property_name": property_name,
+            "user_name": user_name,
+            "status": quote_request.status,
+            "created_at": quote_request.created_at.isoformat(),
+            "notes": quote_request.notes,
+            "quotes": [{
+                "id": q.id,
+                "vendor_name": q.vendor_name,
+                "item_name": q.item_name,
+                "item_description": q.item_description,
+                "unit_price": q.unit_price,
+                "quantity": q.quantity,
+                "total_price": q.total_price,
+                "vendor_item_number": q.vendor_item_number,
+                "availability": q.availability,
+                "vendor_url": q.vendor_url,
+                "fetched_at": q.fetched_at.isoformat()
+            } for q in quotes]
+        }
+
+
+@app.get('/api/quotes/requests')
+def list_quote_requests(current_user=Depends(auth.get_current_user)):
+    """List all quote requests"""
+    with get_session() as s:
+        # Admin and managers see all requests
+        if current_user.role in ['admin', 'manager']:
+            requests = s.exec(select(QuoteRequest)).all()
+        else:
+            # Others only see their own
+            requests = s.exec(
+                select(QuoteRequest).where(QuoteRequest.user_id == current_user.id)
+            ).all()
+
+        result = []
+        for req in requests:
+            # Count quotes for this request
+            quote_count = s.exec(
+                select(Quote).where(Quote.quote_request_id == req.id)
+            ).all()
+
+            result.append({
+                "id": req.id,
+                "item_description": req.item_description,
+                "quantity": req.quantity,
+                "property_id": req.property_id,
+                "status": req.status,
+                "quote_count": len(quote_count),
+                "created_at": req.created_at.isoformat()
+            })
+
+        return result
+
+
+@app.get('/api/quotes/request/{request_id}/email')
+def generate_quote_email(request_id: int, current_user=Depends(auth.get_current_user)):
+    """Generate email-ready HTML for a quote comparison"""
+    with get_session() as s:
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == request_id)
+        ).first()
+
+        if not quote_request:
+            raise HTTPException(status_code=404, detail="Quote request not found")
+
+        quotes = s.exec(
+            select(Quote).where(Quote.quote_request_id == request_id)
+        ).all()
+
+        if not quotes:
+            raise HTTPException(status_code=400, detail="No quotes available for this request")
+
+        # Get property and user info
+        property_name = "N/A"
+        if quote_request.property_id:
+            prop = s.exec(select(Property).where(Property.id == quote_request.property_id)).first()
+            if prop:
+                property_name = prop.name
+
+        user = s.exec(select(User).where(User.id == quote_request.user_id)).first()
+        user_name = user.name if user else "Unknown"
+
+        # Prepare data for email generation
+        request_data = {
+            'item_description': quote_request.item_description,
+            'quantity': quote_request.quantity,
+            'property_name': property_name,
+            'user_name': user_name
+        }
+
+        quotes_data = [{
+            'vendor_name': q.vendor_name,
+            'item_name': q.item_name,
+            'item_description': q.item_description,
+            'unit_price': q.unit_price,
+            'quantity': q.quantity,
+            'total_price': q.total_price,
+            'vendor_item_number': q.vendor_item_number,
+            'availability': q.availability,
+            'vendor_url': q.vendor_url
+        } for q in quotes]
+
+        # Generate email HTML
+        email_html = vendor_quotes.generate_email_html(request_data, quotes_data)
+
+        return {"html": email_html}

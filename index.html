@@ -3090,6 +3090,12 @@
       }
 
       async function loadQuoteRequests() {
+        const container = document.getElementById('quoteRequestsContent');
+        if (!container) {
+          console.error('quoteRequestsContent element not found');
+          return;
+        }
+
         try {
           const res = await fetch('/api/quotes/requests', {
             headers: authHeaders()
@@ -3099,20 +3105,27 @@
             const requests = await res.json();
             displayQuoteRequests(requests);
           } else {
-            document.getElementById('quoteRequestsContent').innerHTML =
-              '<p style="color: var(--danger);">Failed to load quote requests</p>';
+            const errorText = await res.text();
+            console.error('Failed to load quote requests:', res.status, errorText);
+            container.innerHTML =
+              `<p style="color: var(--danger);">Failed to load quote requests (${res.status})</p>`;
           }
         } catch (e) {
           console.error('Error loading quote requests:', e);
-          document.getElementById('quoteRequestsContent').innerHTML =
-            '<p style="color: var(--danger);">Error loading quote requests</p>';
+          container.innerHTML =
+            `<p style="color: var(--danger);">Error loading quote requests: ${e.message}</p>`;
         }
       }
 
       function displayQuoteRequests(requests) {
         const container = document.getElementById('quoteRequestsContent');
 
-        if (requests.length === 0) {
+        if (!container) {
+          console.error('quoteRequestsContent element not found');
+          return;
+        }
+
+        if (!requests || requests.length === 0) {
           container.innerHTML = '<p style="color: var(--text-muted);">No quote requests yet. Create your first request above!</p>';
           return;
         }
@@ -3132,15 +3145,15 @@
                  onclick="viewQuoteDetails(${req.id})">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                 <div>
-                  <h4 style="margin: 0 0 0.5rem 0;">${req.item_description}</h4>
+                  <h4 style="margin: 0 0 0.5rem 0;">${req.item_description || 'N/A'}</h4>
                   <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">
-                    Quantity: ${req.quantity} | Requested: ${new Date(req.created_at).toLocaleDateString()}
+                    Quantity: ${req.quantity || 1} | Requested: ${new Date(req.created_at).toLocaleDateString()}
                   </p>
                 </div>
-                <span class="badge ${statusClass}">${req.status.toUpperCase()}</span>
+                <span class="badge ${statusClass}">${(req.status || 'pending').toUpperCase()}</span>
               </div>
               <div style="display: flex; gap: 1rem; align-items: center;">
-                <span class="badge">${req.quote_count} quotes</span>
+                <span class="badge">${req.quote_count || 0} quotes</span>
                 ${req.quote_count > 0 ? '<button class="btn-secondary" onclick="event.stopPropagation(); generateQuoteEmail(' + req.id + ')" style="padding: 0.5rem 1rem; font-size: 0.875rem;">📧 Generate Email</button>' : ''}
               </div>
             </div>

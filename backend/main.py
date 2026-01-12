@@ -145,6 +145,35 @@ async def _shutdown_resman_poller():
         except asyncio.CancelledError:
             pass
 
+@app.get('/api/health')
+def health_check():
+    """Health check endpoint to verify database and tables"""
+    from sqlmodel import inspect
+    try:
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+
+        # Check for quote tables
+        has_quote_request = 'quoterequest' in tables
+        has_quote = 'quote' in tables
+        has_vendor_credential = 'vendorcredential' in tables
+
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "tables": tables,
+            "quote_tables": {
+                "quoterequest": has_quote_request,
+                "quote": has_quote,
+                "vendorcredential": has_vendor_credential
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 @app.get('/api/properties')
 def get_properties():
     return [p.dict() for p in list_properties()]

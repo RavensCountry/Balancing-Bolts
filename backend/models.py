@@ -99,6 +99,8 @@ class QuoteRequest(SQLModel, table=True):
     status: QuoteStatus = Field(default=QuoteStatus.pending)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     notes: Optional[str] = None
+    invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")  # Link to invoice if auto-generated
+    is_auto_generated: bool = Field(default=False)  # Flag for auto-generated quotes
 
 class Quote(SQLModel, table=True):
     """Individual quotes from vendors"""

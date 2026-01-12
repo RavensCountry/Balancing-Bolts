@@ -10,12 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
 from .database import get_session
-from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property
+from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice
 from .database import init_db
 from . import ai
 from . import auth
 from . import resman
 from . import vendor_quotes
+from . import auto_quote
 
 def configure_logging():
     level_name = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -215,6 +216,19 @@ async def import_invoices(file: UploadFile = File(...), property_id: int = Form(
             ai.store_embedding('invoice', inv.id, raw)
         except Exception:
             pass
+
+        # Automatically generate quote requests from invoice
+        try:
+            auto_quotes = await auto_quote.generate_quotes_from_invoice(
+                invoice_id=inv.id,
+                user_id=current_user.id,
+                property_id=int(property_id),
+                auto_fetch=False  # Don't auto-fetch yet, let user review first
+            )
+            logger.info(f"Auto-generated {len(auto_quotes)} quote requests for invoice {inv.id}")
+        except Exception as e:
+            logger.exception(f"Error auto-generating quotes for invoice {inv.id}: {e}")
+
         created.append({'id': inv.id, 'total': inv.total, 'vendor': inv.vendor})
     return {'imported': len(created), 'items': created}
 
@@ -878,3 +892,52 @@ def generate_quote_email(request_id: int, current_user=Depends(auth.get_current_
         email_html = vendor_quotes.generate_email_html(request_data, quotes_data)
 
         return {"html": email_html}
+
+
+@app.get('/api/invoices/{invoice_id}/quotes')
+def get_invoice_quotes(invoice_id: int, current_user=Depends(auth.get_current_user)):
+    """Get all quote requests automatically generated from an invoice"""
+    try:
+        quotes_data = auto_quote.get_invoice_quotes(invoice_id)
+        return {
+            "invoice_id": invoice_id,
+            "quote_requests": quotes_data
+        }
+    except Exception as e:
+        logger.exception(f"Error getting invoice quotes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/invoices/{invoice_id}/quotes/generate')
+async def generate_invoice_quotes(
+    invoice_id: int,
+    auto_fetch: bool = False,
+    current_user=Depends(auth.get_current_user)
+):
+    """Manually trigger quote generation for an invoice"""
+    with get_session() as s:
+        invoice = s.exec(select(Invoice).where(Invoice.id == invoice_id)).first()
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        try:
+            created_quotes = await auto_quote.generate_quotes_from_invoice(
+                invoice_id=invoice_id,
+                user_id=current_user.id,
+                property_id=invoice.property_id,
+                auto_fetch=auto_fetch
+            )
+
+            return {
+                "status": "success",
+                "generated_quotes": len(created_quotes),
+                "quote_requests": [{
+                    "id": qr.id,
+                    "item_description": qr.item_description,
+                    "quantity": qr.quantity,
+                    "status": qr.status
+                } for qr in created_quotes]
+            }
+        except Exception as e:
+            logger.exception(f"Error generating quotes for invoice {invoice_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate quotes: {str(e)}")

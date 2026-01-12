@@ -916,6 +916,40 @@ def generate_quote_email(request_id: int, current_user=Depends(auth.get_current_
         return {"html": email_html}
 
 
+@app.delete('/api/quotes/{quote_id}')
+def delete_quote(quote_id: int, current_user=Depends(auth.get_current_user)):
+    """Delete an individual vendor quote"""
+    with get_session() as s:
+        # Get the quote
+        quote = s.exec(
+            select(Quote).where(Quote.id == quote_id)
+        ).first()
+
+        if not quote:
+            raise HTTPException(status_code=404, detail="Quote not found")
+
+        # Get the associated quote request to check permissions
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == quote.quote_request_id)
+        ).first()
+
+        # Check permissions - admins/managers can delete any quote, others only their own
+        if current_user.role not in ['admin', 'manager']:
+            if not quote_request or quote_request.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to delete this quote")
+
+        # Delete the quote
+        s.delete(quote)
+        s.commit()
+
+        logger.info(f"User {current_user.id} deleted quote {quote_id} ({quote.vendor_name})")
+
+        return {
+            "status": "success",
+            "message": f"Quote from {quote.vendor_name} deleted successfully"
+        }
+
+
 @app.get('/api/invoices/{invoice_id}/quotes')
 def get_invoice_quotes(invoice_id: int, current_user=Depends(auth.get_current_user)):
     """Get all quote requests automatically generated from an invoice"""

@@ -3195,16 +3195,22 @@
             const bestPrice = index === 0 ? 'background: var(--success-light); border: 2px solid var(--success);' : '';
 
             html += `
-              <div class="card" style="padding: 1.5rem; ${bestPrice}">
+              <div class="card" style="padding: 1.5rem; ${bestPrice}" id="quote-${quote.id}">
                 <div style="display: flex; justify-content: space-between; align-items: start;">
-                  <div>
+                  <div style="flex: 1;">
                     <h4 style="margin: 0 0 0.5rem 0;">${quote.vendor_name} ${index === 0 ? '⭐ BEST PRICE' : ''}</h4>
                     <p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Product:</strong> ${quote.item_name}</p>
                     ${quote.vendor_item_number ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Item #:</strong> ${quote.vendor_item_number}</p>` : ''}
                     ${quote.availability ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Availability:</strong> ${quote.availability}</p>` : ''}
-                    ${quote.vendor_url ? `<a href="${quote.vendor_url}" target="_blank" class="btn-secondary" style="margin-top: 0.5rem; display: inline-block; padding: 0.5rem 1rem; font-size: 0.875rem;">View on Website</a>` : ''}
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                      ${quote.vendor_url ? `<a href="${quote.vendor_url}" target="_blank" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">View on Website</a>` : ''}
+                      <button class="btn-danger" onclick="deleteQuote(${quote.id}, ${quoteRequest.id})"
+                              style="padding: 0.5rem 1rem; font-size: 0.875rem; background: var(--error); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        🗑️ Delete
+                      </button>
+                    </div>
                   </div>
-                  <div style="text-align: right;">
+                  <div style="text-align: right; margin-left: 1rem;">
                     <p style="font-size: 2rem; font-weight: bold; color: var(--success); margin: 0;">
                       $${quote.total_price.toFixed(2)}
                     </p>
@@ -3246,6 +3252,43 @@
         `;
 
         document.body.insertAdjacentHTML('beforeend', html);
+      }
+
+      async function deleteQuote(quoteId, requestId) {
+        if (!confirm('Are you sure you want to delete this quote? This cannot be undone.')) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/quotes/${quoteId}`, {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            alert(data.message);
+
+            // Remove the quote element from the DOM
+            const quoteElement = document.getElementById(`quote-${quoteId}`);
+            if (quoteElement) {
+              quoteElement.remove();
+            }
+
+            // Refresh the quote details to update count and best price
+            await viewQuoteDetails(requestId);
+
+            // Also refresh the quote requests list
+            if (typeof loadQuoteRequests === 'function') {
+              await loadQuoteRequests();
+            }
+          } else {
+            const error = await res.json();
+            alert(`Failed to delete quote: ${error.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
       }
 
       async function generateQuoteEmail(requestId) {

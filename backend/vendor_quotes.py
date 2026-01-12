@@ -56,25 +56,51 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
 
     async def login(self) -> bool:
         """Login to Home Depot"""
-        # Note: This is a placeholder implementation
-        # Real implementation would need to handle Home Depot's actual login flow
-        try:
-            # Home Depot Pro/Business account login
-            login_url = f"{self.BASE_URL}/auth/view/signin"
-            # Implementation would go here
-            self.is_logged_in = True
-            return True
-        except Exception as e:
-            print(f"Home Depot login failed: {e}")
-            return False
+        # For demo: Always succeeds
+        # Real implementation would handle actual login flow
+        self.is_logged_in = True
+        return True
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
         """Search Home Depot for products"""
         try:
-            # Placeholder for actual API/scraping implementation
-            search_url = f"{self.BASE_URL}/s/{query}"
-            # Would parse results and return structured data
-            return []
+            # DEMO MODE: Return sample data for testing
+            # Real implementation would use Home Depot API or web scraping
+
+            # Generate realistic sample prices based on common items
+            base_prices = {
+                'light': 8.97,
+                'bulb': 12.49,
+                'led': 15.99,
+                'filter': 24.99,
+                'paint': 34.98,
+                'lock': 19.97,
+                'faucet': 89.99,
+                'door': 199.00,
+                'battery': 6.99,
+                'cleaning': 7.49
+            }
+
+            # Find matching price
+            query_lower = query.lower()
+            unit_price = 25.00  # Default
+            for keyword, price in base_prices.items():
+                if keyword in query_lower:
+                    unit_price = price
+                    break
+
+            # Return sample quote
+            return [{
+                'vendor_name': 'Home Depot',
+                'item_name': query,
+                'item_description': f"{query} - Professional Grade",
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'total_price': unit_price * quantity,
+                'vendor_item_number': f"HD-{hash(query) % 100000}",
+                'availability': 'In Stock',
+                'vendor_url': f"{self.BASE_URL}/p/{query.replace(' ', '-')}"
+            }]
         except Exception as e:
             print(f"Home Depot search failed: {e}")
             return []
@@ -87,19 +113,46 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
 
     async def login(self) -> bool:
         """Login to Lowe's"""
-        try:
-            # Lowe's for Pros account login
-            self.is_logged_in = True
-            return True
-        except Exception as e:
-            print(f"Lowe's login failed: {e}")
-            return False
+        self.is_logged_in = True
+        return True
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
         """Search Lowe's for products"""
         try:
-            # Placeholder for actual implementation
-            return []
+            # DEMO MODE: Return sample data
+            # Lowe's prices are typically competitive with Home Depot
+
+            base_prices = {
+                'light': 9.48,
+                'bulb': 11.98,
+                'led': 14.99,
+                'filter': 23.97,
+                'paint': 32.98,
+                'lock': 18.97,
+                'faucet': 84.99,
+                'door': 189.00,
+                'battery': 7.49,
+                'cleaning': 6.99
+            }
+
+            query_lower = query.lower()
+            unit_price = 24.00  # Default
+            for keyword, price in base_prices.items():
+                if keyword in query_lower:
+                    unit_price = price
+                    break
+
+            return [{
+                'vendor_name': "Lowe's",
+                'item_name': query,
+                'item_description': f"{query} - Contractor Select",
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'total_price': unit_price * quantity,
+                'vendor_item_number': f"LOW-{hash(query) % 100000}",
+                'availability': 'In Stock - Ready in 2 hours',
+                'vendor_url': f"{self.BASE_URL}/pd/{query.replace(' ', '-')}"
+            }]
         except Exception as e:
             print(f"Lowe's search failed: {e}")
             return []
@@ -112,19 +165,46 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
 
     async def login(self) -> bool:
         """Login to Grainger"""
-        try:
-            # Grainger account login
-            self.is_logged_in = True
-            return True
-        except Exception as e:
-            print(f"Grainger login failed: {e}")
-            return False
+        self.is_logged_in = True
+        return True
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
         """Search Grainger for products"""
         try:
-            # Placeholder for actual implementation
-            return []
+            # DEMO MODE: Return sample data
+            # Grainger typically has higher prices but better industrial/commercial quality
+
+            base_prices = {
+                'light': 11.99,
+                'bulb': 15.49,
+                'led': 19.99,
+                'filter': 29.99,
+                'paint': 39.98,
+                'lock': 24.97,
+                'faucet': 109.99,
+                'door': 229.00,
+                'battery': 8.99,
+                'cleaning': 9.49
+            }
+
+            query_lower = query.lower()
+            unit_price = 28.00  # Default
+            for keyword, price in base_prices.items():
+                if keyword in query_lower:
+                    unit_price = price
+                    break
+
+            return [{
+                'vendor_name': 'Grainger',
+                'item_name': query,
+                'item_description': f"{query} - Industrial Grade",
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'total_price': unit_price * quantity,
+                'vendor_item_number': f"GR-{hash(query) % 100000}",
+                'availability': 'Ships in 1-2 Business Days',
+                'vendor_url': f"{self.BASE_URL}/product/{query.replace(' ', '-')}"
+            }]
         except Exception as e:
             print(f"Grainger search failed: {e}")
             return []

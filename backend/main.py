@@ -217,13 +217,13 @@ async def import_invoices(file: UploadFile = File(...), property_id: int = Form(
         except Exception:
             pass
 
-        # Automatically generate quote requests from invoice
+        # Automatically generate quote requests from invoice and fetch quotes
         try:
             auto_quotes = await auto_quote.generate_quotes_from_invoice(
                 invoice_id=inv.id,
                 user_id=current_user.id,
                 property_id=int(property_id),
-                auto_fetch=False  # Don't auto-fetch yet, let user review first
+                auto_fetch=True  # Automatically fetch quotes from vendors
             )
             logger.info(f"Auto-generated {len(auto_quotes)} quote requests for invoice {inv.id}")
         except Exception as e:
@@ -626,9 +626,10 @@ async def create_quote_request(
     quantity: int = Form(1),
     property_id: int = Form(None),
     notes: str = Form(None),
+    auto_fetch: bool = Form(True),  # Default to auto-fetch
     current_user=Depends(auth.get_current_user)
 ):
-    """Create a new quote request"""
+    """Create a new quote request and optionally auto-fetch quotes"""
     with get_session() as s:
         # Validate property if provided
         if property_id:
@@ -647,6 +648,26 @@ async def create_quote_request(
         s.commit()
         s.refresh(quote_request)
 
+        request_id = quote_request.id
+
+    # Auto-fetch quotes if enabled
+    if auto_fetch:
+        try:
+            await fetch_quotes(request_id, current_user)
+            logger.info(f"Auto-fetched quotes for request {request_id}")
+        except Exception as e:
+            logger.exception(f"Error auto-fetching quotes for request {request_id}: {e}")
+
+    with get_session() as s:
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == request_id)
+        ).first()
+
+        # Get quote count
+        quotes = s.exec(
+            select(Quote).where(Quote.quote_request_id == request_id)
+        ).all()
+
         return {
             "status": "success",
             "quote_request": {
@@ -655,7 +676,8 @@ async def create_quote_request(
                 "quantity": quote_request.quantity,
                 "property_id": quote_request.property_id,
                 "status": quote_request.status,
-                "created_at": quote_request.created_at.isoformat()
+                "created_at": quote_request.created_at.isoformat(),
+                "quote_count": len(quotes)
             }
         }
 

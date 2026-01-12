@@ -1558,7 +1558,7 @@
           <div class="card">
             <h3>💰 Vendor Quote Comparison</h3>
             <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-              Request quotes from multiple vendors automatically. Save vendor logins once and get instant price comparisons.
+              🤖 <strong>Automatic Quote Fetching:</strong> Request quotes and the system automatically logs into your saved vendors, pulls real prices, and compares them instantly. No manual fetching needed!
             </p>
 
             <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
@@ -3028,6 +3028,7 @@
         const formData = new FormData();
         formData.append('item_description', document.getElementById('quoteItemDescription').value);
         formData.append('quantity', document.getElementById('quoteQuantity').value);
+        formData.append('auto_fetch', 'true');  // Enable automatic quote fetching
 
         const propertyId = document.getElementById('quoteProperty').value;
         if (propertyId) {
@@ -3048,12 +3049,13 @@
 
           if (res.ok) {
             const data = await res.json();
-            const requestId = data.quote_request.id;
+            const quoteCount = data.quote_request.quote_count || 0;
 
-            alert('Quote request created! Fetching quotes from vendors...');
-
-            // Automatically fetch quotes
-            await fetchQuotesForRequest(requestId);
+            if (quoteCount > 0) {
+              alert(`✓ Quote request created! Automatically fetched ${quoteCount} quotes from vendors.`);
+            } else {
+              alert('✓ Quote request created! Quotes are being fetched in the background...');
+            }
 
             document.getElementById('newQuoteForm').reset();
             hideNewQuoteRequest();

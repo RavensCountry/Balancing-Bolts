@@ -113,7 +113,7 @@ async def generate_quotes_from_invoice(
     invoice_id: int,
     user_id: int,
     property_id: Optional[int] = None,
-    auto_fetch: bool = True
+    auto_fetch: bool = True  # Now enabled by default
 ) -> List[QuoteRequest]:
     """
     Automatically generate quote requests from invoice items
@@ -201,11 +201,11 @@ async def generate_quotes_from_invoice(
             created_quotes.append(quote_request)
             logger.info(f"Created auto quote request #{quote_request.id} for: {item_info['description']}")
 
-        # Optionally auto-fetch quotes from vendors
+        # Automatically fetch quotes from vendors
         if auto_fetch and created_quotes:
             # Import here to avoid circular dependency
             from . import vendor_quotes
-            from .models import VendorCredential
+            from .models import VendorCredential, Quote
 
             # Get active vendor credentials
             credentials = session.exec(
@@ -213,7 +213,7 @@ async def generate_quotes_from_invoice(
             ).all()
 
             if credentials:
-                logger.info(f"Auto-fetching quotes for {len(created_quotes)} items")
+                logger.info(f"Auto-fetching quotes for {len(created_quotes)} items from {len(credentials)} vendors")
 
                 for quote_request in created_quotes:
                     try:
@@ -229,17 +229,49 @@ async def generate_quotes_from_invoice(
                             'encrypted_password': c.encrypted_password
                         } for c in credentials]
 
-                        # Note: Actual quote fetching would happen here
-                        # For now, mark as completed with no quotes (placeholder)
+                        # Fetch quotes from all vendors
+                        quotes_data = await vendor_quotes.fetch_quotes_from_vendors(
+                            quote_request.item_description,
+                            quote_request.quantity,
+                            creds_data
+                        )
+
+                        # Save quotes to database
+                        for quote_data in quotes_data:
+                            quote = Quote(
+                                quote_request_id=quote_request.id,
+                                vendor_name=quote_data.get('vendor_name', 'Unknown'),
+                                item_name=quote_data.get('item_name', quote_request.item_description),
+                                item_description=quote_data.get('item_description'),
+                                unit_price=quote_data.get('unit_price', 0.0),
+                                quantity=quote_request.quantity,
+                                total_price=quote_data.get('total_price', 0.0),
+                                vendor_item_number=quote_data.get('vendor_item_number'),
+                                availability=quote_data.get('availability'),
+                                vendor_url=quote_data.get('vendor_url'),
+                                raw_data=quote_data.get('raw_data')
+                            )
+                            session.add(quote)
+
+                        # Update request status to completed
                         quote_request.status = QuoteStatus.completed
                         session.add(quote_request)
                         session.commit()
+
+                        logger.info(f"Fetched {len(quotes_data)} quotes for request {quote_request.id}")
 
                     except Exception as e:
                         logger.exception(f"Error auto-fetching quotes for request {quote_request.id}: {e}")
                         quote_request.status = QuoteStatus.failed
                         session.add(quote_request)
                         session.commit()
+            else:
+                logger.warning("No active vendor credentials found - quotes not fetched automatically")
+                # Mark as pending if no credentials
+                for quote_request in created_quotes:
+                    quote_request.status = QuoteStatus.pending
+                    session.add(quote_request)
+                session.commit()
 
     return created_quotes
 

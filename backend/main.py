@@ -43,6 +43,27 @@ app.add_middleware(
 
 init_db()
 
+# Run database migrations automatically on startup
+try:
+    from sqlalchemy import text
+    logger.info("Checking for required database migrations...")
+
+    migrations = [
+        "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS invoice_id INTEGER;",
+        "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS is_auto_generated BOOLEAN DEFAULT FALSE;",
+    ]
+
+    with engine.connect() as conn:
+        for sql in migrations:
+            logger.info(f"Running migration: {sql}")
+            conn.execute(text(sql))
+            conn.commit()
+
+    logger.info("✓ Database migrations completed successfully")
+except Exception as e:
+    logger.error(f"Migration error (non-fatal): {e}")
+    # Don't fail startup if migration fails
+
 # Load index.html for serving at root
 import pathlib
 INDEX_PATH = pathlib.Path(__file__).parent.parent / "index.html"

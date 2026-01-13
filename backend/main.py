@@ -787,12 +787,11 @@ async def fetch_quotes(
         # If no credentials configured, use demo mode with fake credentials
         if not credentials:
             logger.info("No vendor credentials found, using demo mode")
-            from backend.vendor_quotes import encrypt_password
             # Create demo credentials (passwords don't matter in demo mode)
             creds_data = [
-                {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': encrypt_password('demo')},
-                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': encrypt_password('demo')},
-                {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': encrypt_password('demo')}
+                {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')},
+                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')},
+                {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')}
             ]
         else:
             # Prepare credential data for fetching
@@ -803,12 +802,16 @@ async def fetch_quotes(
             } for c in credentials]
 
         try:
+            logger.info(f"Fetching quotes for '{quote_request.item_description}' from {len(creds_data)} vendors")
+
             # Fetch quotes from vendors
             quotes_data = await vendor_quotes.fetch_quotes_from_vendors(
                 quote_request.item_description,
                 quote_request.quantity,
                 creds_data
             )
+
+            logger.info(f"Received {len(quotes_data)} quotes from vendors")
 
             # Save quotes to database
             for quote_data in quotes_data:

@@ -148,30 +148,26 @@ async def _shutdown_resman_poller():
 @app.get('/api/health')
 def health_check():
     """Health check endpoint to verify database and tables"""
-    from sqlmodel import inspect
     try:
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
+        # Try to query the database
+        with get_session() as s:
+            # Try to count quote requests
+            quote_requests_count = len(s.exec(select(QuoteRequest)).all())
+            quotes_count = len(s.exec(select(Quote)).all())
 
-        # Check for quote tables
-        has_quote_request = 'quoterequest' in tables
-        has_quote = 'quote' in tables
-        has_vendor_credential = 'vendorcredential' in tables
-
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "tables": tables,
-            "quote_tables": {
-                "quoterequest": has_quote_request,
-                "quote": has_quote,
-                "vendorcredential": has_vendor_credential
+            return {
+                "status": "healthy",
+                "database": "connected",
+                "quote_requests": quote_requests_count,
+                "quotes": quotes_count,
+                "tables_working": True
             }
-        }
     except Exception as e:
+        import traceback
         return {
             "status": "error",
-            "error": str(e)
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }
 
 @app.get('/api/properties')

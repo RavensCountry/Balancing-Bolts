@@ -993,6 +993,44 @@ def generate_quote_email(request_id: int, current_user=Depends(auth.get_current_
         return {"html": email_html}
 
 
+@app.delete('/api/quotes/request/{request_id}')
+def delete_quote_request(request_id: int, current_user=Depends(auth.get_current_user)):
+    """Delete an entire quote request and all associated quotes"""
+    with get_session() as s:
+        # Get the quote request
+        quote_request = s.exec(
+            select(QuoteRequest).where(QuoteRequest.id == request_id)
+        ).first()
+
+        if not quote_request:
+            raise HTTPException(status_code=404, detail="Quote request not found")
+
+        # Check permissions - admins/managers can delete any request, others only their own
+        if current_user.role not in ['admin', 'manager']:
+            if quote_request.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to delete this quote request")
+
+        # Delete all associated quotes first
+        quotes = s.exec(
+            select(Quote).where(Quote.quote_request_id == request_id)
+        ).all()
+
+        for quote in quotes:
+            s.delete(quote)
+
+        # Delete the quote request
+        item_desc = quote_request.item_description
+        s.delete(quote_request)
+        s.commit()
+
+        logger.info(f"User {current_user.id} deleted quote request {request_id} ({item_desc})")
+
+        return {
+            "status": "success",
+            "message": f"Quote request '{item_desc}' deleted successfully"
+        }
+
+
 @app.delete('/api/quotes/{quote_id}')
 def delete_quote(quote_id: int, current_user=Depends(auth.get_current_user)):
     """Delete an individual vendor quote"""

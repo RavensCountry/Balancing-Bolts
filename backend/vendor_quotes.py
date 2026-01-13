@@ -29,7 +29,12 @@ class VendorQuoteFetcher:
 
     def __init__(self, username: str, encrypted_password: str):
         self.username = username
-        self.password = decrypt_password(encrypted_password)
+        # Try to decrypt, but if it fails (demo mode), just use the encrypted value as-is
+        try:
+            self.password = decrypt_password(encrypted_password)
+        except Exception:
+            # In demo mode, password doesn't matter
+            self.password = encrypted_password
         self.session = requests.Session()
         self.is_logged_in = False
 

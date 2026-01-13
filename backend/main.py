@@ -787,11 +787,11 @@ async def fetch_quotes(
         # If no credentials configured, use demo mode with fake credentials
         if not credentials:
             logger.info("No vendor credentials found, using demo mode")
-            # Create demo credentials (passwords don't matter in demo mode)
+            # Create demo credentials (passwords don't matter in demo mode, so use plain text)
             creds_data = [
-                {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')},
-                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')},
-                {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': vendor_quotes.encrypt_password('demo')}
+                {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'},
+                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'},
+                {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'}
             ]
         else:
             # Prepare credential data for fetching

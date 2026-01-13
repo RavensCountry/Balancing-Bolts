@@ -3173,8 +3173,11 @@
           if (res.ok) {
             const data = await res.json();
             showQuoteDetailsModal(data);
+          } else if (res.status === 404) {
+            alert('Quote request not found. It may have been deleted. Refreshing list...');
+            await loadQuoteRequests();
           } else {
-            alert('Failed to load quote details');
+            alert(`Failed to load quote details (${res.status})`);
           }
         } catch (e) {
           alert(`Error: ${e.message}`);

@@ -145,6 +145,37 @@ async def _shutdown_resman_poller():
         except asyncio.CancelledError:
             pass
 
+@app.get('/api/migrate')
+def run_migration(current_user=Depends(auth.require_role('admin'))):
+    """Run database migrations to add missing columns (admin only)"""
+    try:
+        from sqlalchemy import text
+
+        migrations = [
+            "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS invoice_id INTEGER;",
+            "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS is_auto_generated BOOLEAN DEFAULT FALSE;",
+        ]
+
+        with engine.connect() as conn:
+            for sql in migrations:
+                logger.info(f"Running migration: {sql}")
+                conn.execute(text(sql))
+                conn.commit()
+
+        return {
+            "status": "success",
+            "message": "Database migration completed successfully",
+            "migrations_run": len(migrations)
+        }
+    except Exception as e:
+        import traceback
+        logger.exception("Migration failed")
+        return {
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get('/api/health')
 def health_check():
     """Health check endpoint to verify database and tables"""

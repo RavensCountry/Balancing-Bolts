@@ -909,34 +909,41 @@ def get_quote_request(request_id: int, current_user=Depends(auth.get_current_use
 @app.get('/api/quotes/requests')
 def list_quote_requests(current_user=Depends(auth.get_current_user)):
     """List all quote requests"""
-    with get_session() as s:
-        # Admin and managers see all requests
-        if current_user.role in ['admin', 'manager']:
-            requests = s.exec(select(QuoteRequest)).all()
-        else:
-            # Others only see their own
-            requests = s.exec(
-                select(QuoteRequest).where(QuoteRequest.user_id == current_user.id)
-            ).all()
+    try:
+        with get_session() as s:
+            # Admin and managers see all requests
+            if current_user.role in ['admin', 'manager']:
+                requests = s.exec(select(QuoteRequest)).all()
+            else:
+                # Others only see their own
+                requests = s.exec(
+                    select(QuoteRequest).where(QuoteRequest.user_id == current_user.id)
+                ).all()
 
-        result = []
-        for req in requests:
-            # Count quotes for this request
-            quote_count = s.exec(
-                select(Quote).where(Quote.quote_request_id == req.id)
-            ).all()
+            logger.info(f"Found {len(requests)} quote requests for user {current_user.id} ({current_user.role})")
 
-            result.append({
-                "id": req.id,
-                "item_description": req.item_description,
-                "quantity": req.quantity,
-                "property_id": req.property_id,
-                "status": req.status,
-                "quote_count": len(quote_count),
-                "created_at": req.created_at.isoformat()
-            })
+            result = []
+            for req in requests:
+                # Count quotes for this request
+                quote_count = s.exec(
+                    select(Quote).where(Quote.quote_request_id == req.id)
+                ).all()
 
-        return result
+                result.append({
+                    "id": req.id,
+                    "item_description": req.item_description,
+                    "quantity": req.quantity,
+                    "property_id": req.property_id,
+                    "status": req.status,
+                    "quote_count": len(quote_count),
+                    "created_at": req.created_at.isoformat() if req.created_at else None
+                })
+                logger.info(f"  - Quote request {req.id}: {req.item_description}")
+
+            return result
+    except Exception as e:
+        logger.exception(f"Error listing quote requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get('/api/quotes/request/{request_id}/email')

@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
-from .database import get_session
+from .database import get_session, engine
 from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice
 from .database import init_db
 from . import ai

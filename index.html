@@ -3061,10 +3061,19 @@
             hideNewQuoteRequest();
             await loadQuoteRequests();
           } else {
-            const data = await res.json();
-            alert(`Failed to create quote request: ${data.detail || 'Unknown error'}`);
+            const errorText = await res.text();
+            console.error('Failed to create quote request:', res.status, errorText);
+            let errorDetail = 'Unknown error';
+            try {
+              const errorData = JSON.parse(errorText);
+              errorDetail = errorData.detail || errorText;
+            } catch {
+              errorDetail = errorText;
+            }
+            alert(`Failed to create quote request (${res.status}): ${errorDetail}`);
           }
         } catch (e) {
+          console.error('Error creating quote request:', e);
           alert(`Error: ${e.message}`);
         }
       }

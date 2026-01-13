@@ -784,18 +784,23 @@ async def fetch_quotes(
             select(VendorCredential).where(VendorCredential.is_active == True)
         ).all()
 
+        # If no credentials configured, use demo mode with fake credentials
         if not credentials:
-            quote_request.status = QuoteStatus.failed
-            s.add(quote_request)
-            s.commit()
-            raise HTTPException(status_code=400, detail="No vendor credentials configured")
-
-        # Prepare credential data for fetching
-        creds_data = [{
-            'vendor_name': c.vendor_name,
-            'username': c.username,
-            'encrypted_password': c.encrypted_password
-        } for c in credentials]
+            logger.info("No vendor credentials found, using demo mode")
+            from backend.vendor_quotes import encrypt_password
+            # Create demo credentials (passwords don't matter in demo mode)
+            creds_data = [
+                {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': encrypt_password('demo')},
+                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': encrypt_password('demo')},
+                {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': encrypt_password('demo')}
+            ]
+        else:
+            # Prepare credential data for fetching
+            creds_data = [{
+                'vendor_name': c.vendor_name,
+                'username': c.username,
+                'encrypted_password': c.encrypted_password
+            } for c in credentials]
 
         try:
             # Fetch quotes from vendors

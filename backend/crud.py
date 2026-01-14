@@ -1,5 +1,5 @@
 from .database import get_session, init_db
-from .models import User, Property, InventoryItem, Invoice, ActivityLog, Embedding, UserPropertyAccess
+from .models import User, Property, InventoryItem, Invoice, ActivityLog, Embedding, UserPropertyAccess, Organization
 from passlib.context import CryptContext
 from typing import List, Optional
 from sqlmodel import select
@@ -12,7 +12,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 fallback_ctx = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
-def create_user(name: str, email: str, role: str, property_id: Optional[int] = None, password: Optional[str] = None) -> User:
+def create_user(name: str, email: str, role: str, property_id: Optional[int] = None, password: Optional[str] = None, organization_id: Optional[int] = None) -> User:
     with get_session() as s:
         hashed = None
         if password:
@@ -25,19 +25,21 @@ def create_user(name: str, email: str, role: str, property_id: Optional[int] = N
                 except Exception:
                     import hashlib
                     hashed = hashlib.sha256(password.encode('utf-8')).hexdigest()
-        u = User(name=name, email=email, role=role, current_property_id=property_id, hashed_password=hashed)
+        u = User(name=name, email=email, role=role, current_property_id=property_id, hashed_password=hashed, organization_id=organization_id)
         s.add(u)
         s.commit()
         s.refresh(u)
         return u
 
-def list_properties() -> List[Property]:
+def list_properties(organization_id: Optional[int] = None) -> List[Property]:
     with get_session() as s:
+        if organization_id:
+            return s.exec(select(Property).where(Property.organization_id == organization_id)).all()
         return s.exec(select(Property)).all()
 
-def create_property(name: str, address: Optional[str] = None) -> Property:
+def create_property(name: str, address: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
     with get_session() as s:
-        p = Property(name=name, address=address)
+        p = Property(name=name, address=address, organization_id=organization_id)
         s.add(p)
         s.commit()
         s.refresh(p)

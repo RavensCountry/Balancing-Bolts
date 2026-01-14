@@ -236,13 +236,14 @@ def health_check():
         }
 
 @app.get('/api/properties')
-def get_properties():
-    return [p.dict() for p in list_properties()]
+def get_properties(current_user=Depends(auth.get_current_user)):
+    """Get properties for current user's organization"""
+    return [p.dict() for p in list_properties(organization_id=current_user.organization_id)]
 
 @app.post('/api/properties')
 def post_property(name: str = Form(...), address: str = Form(None), user=Depends(auth.require_role('admin'))):
-    """Create a property (admin-only)."""
-    p = create_property(name=name, address=address)
+    """Create a property (admin-only) in current user's organization"""
+    p = create_property(name=name, address=address, organization_id=user.organization_id)
     return p
 @app.delete('/api/properties/{property_id}')
 def delete_property(property_id: int, user=Depends(auth.require_role('admin'))):
@@ -416,9 +417,46 @@ def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = Non
 
 # Auth endpoints
 @app.post('/api/auth/signup')
-def signup(name: str = Form(...), email: str = Form(...), password: str = Form(...), role: str = Form('maintenance')):
-    # create user (stores hashed password)
-    u = create_user(name=name, email=email, role=role, password=password)
+def signup(
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    role: str = Form('maintenance'),
+    company_name: str = Form(None)
+):
+    """
+    Create a new user account. If company_name provided, creates new organization.
+    Otherwise assigns based on email domain or default organization.
+    """
+    with get_session() as s:
+        # Check if user already exists
+        existing = s.exec(select(User).where(User.email == email)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="User with this email already exists")
+
+        organization_id = None
+
+        # If company name provided, create new organization
+        if company_name:
+            org = Organization(name=company_name)
+            s.add(org)
+            s.commit()
+            s.refresh(org)
+            organization_id = org.id
+            role = 'admin'  # First user becomes admin
+            logger.info(f"Created new organization: {company_name}")
+        else:
+            # Assign to default organization
+            default_org = s.exec(select(Organization).where(Organization.id == 1)).first()
+            if not default_org:
+                default_org = Organization(name="Default Organization")
+                s.add(default_org)
+                s.commit()
+                s.refresh(default_org)
+            organization_id = default_org.id
+
+    # Create user
+    u = create_user(name=name, email=email, role=role, password=password, organization_id=organization_id)
     token = auth.create_access_token({"sub": u.email})
     return {"access_token": token, "token_type": "bearer", "user": u}
 

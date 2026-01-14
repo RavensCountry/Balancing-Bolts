@@ -601,9 +601,9 @@ def revoke_access(
 
 @app.get('/api/users')
 def list_all_users(current_user=Depends(auth.require_role('admin'))):
-    """List all users (admin only)"""
+    """List all users in current user's organization (admin only)"""
     with get_session() as s:
-        users = s.exec(select(User)).all()
+        users = s.exec(select(User).where(User.organization_id == current_user.organization_id)).all()
         return [{"id": u.id, "name": u.name, "email": u.email, "role": u.role} for u in users]
 
 

@@ -1684,6 +1684,7 @@
             msgEl.innerHTML = '<div class="alert success">Logged in successfully!</div>';
             setTimeout(() => {
               showMainApp();
+              resetInactivityTimer(); // Start inactivity timer after login
             }, 500);
           } else {
             msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Login failed'}</div>`;
@@ -1718,6 +1719,7 @@
             msgEl.innerHTML = '<div class="alert success">Account created successfully!</div>';
             setTimeout(() => {
               showMainApp();
+              resetInactivityTimer(); // Start inactivity timer after signup
             }, 500);
           } else {
             msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Signup failed'}</div>`;
@@ -1727,7 +1729,23 @@
         }
       }
 
+      // Auto-logout after 30 minutes of inactivity
+      let inactivityTimer;
+      const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+      function resetInactivityTimer() {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          const token = localStorage.getItem('bb_token');
+          if (token) {
+            alert('You have been logged out due to inactivity.');
+            logout();
+          }
+        }, INACTIVITY_TIMEOUT);
+      }
+
       function logout() {
+        clearTimeout(inactivityTimer);
         localStorage.removeItem('bb_token');
         document.getElementById('loginScreen').classList.add('active');
         document.getElementById('mainApp').classList.remove('active');
@@ -3428,9 +3446,22 @@
         const token = localStorage.getItem('bb_token');
         if (token) {
           showMainApp();
+          // Start inactivity timer for logged-in users
+          resetInactivityTimer();
         } else {
           document.getElementById('loginScreen').classList.add('active');
         }
+
+        // Track user activity to reset inactivity timer
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        activityEvents.forEach(event => {
+          document.addEventListener(event, () => {
+            const token = localStorage.getItem('bb_token');
+            if (token) {
+              resetInactivityTimer();
+            }
+          }, true);
+        });
       });
 
       // AI Chat Widget Functions

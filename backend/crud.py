@@ -63,12 +63,15 @@ def add_inventory(property_id: int, name: str, desc: Optional[str], qty: int, co
         return item
 
 
-def list_inventory(page: int = 1, per_page: int = 20, property_id: Optional[int] = None):
-    """Return (items, total_count) for inventory with optional property filter."""
+def list_inventory(page: int = 1, per_page: int = 20, property_id: Optional[int] = None, organization_id: Optional[int] = None):
+    """Return (items, total_count) for inventory with optional property and organization filter."""
     with get_session() as s:
         q = select(InventoryItem)
         if property_id:
             q = q.where(InventoryItem.property_id == property_id)
+        elif organization_id:
+            # Filter by properties that belong to the organization
+            q = q.join(Property).where(Property.organization_id == organization_id)
         all_items = s.exec(q).all()
         total = len(all_items)
         # simple in-memory pagination

@@ -1704,11 +1704,18 @@
           return;
         }
 
+        // Ask for company name
+        const companyName = prompt('What is your company/organization name?\n\n(This will create a new organization. Leave empty to join an existing one if invited.)');
+
         const fd = new URLSearchParams();
         fd.append('name', email.split('@')[0] || email);
         fd.append('email', email);
         fd.append('password', password);
         fd.append('role', 'manager');
+
+        if (companyName && companyName.trim()) {
+          fd.append('company_name', companyName.trim());
+        }
 
         try {
           const res = await fetch('/api/auth/signup', { method: 'POST', body: fd });

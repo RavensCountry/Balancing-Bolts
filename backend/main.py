@@ -411,7 +411,7 @@ async def api_add_inventory(property_id: int = Form(...), name: str = Form(...),
 @app.get('/api/inventory')
 def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = None, user=Depends(auth.get_current_user)):
     from .crud import list_inventory
-    items, total = list_inventory(page=int(page), per_page=int(per_page), property_id=property_id)
+    items, total = list_inventory(page=int(page), per_page=int(per_page), property_id=property_id, organization_id=user.organization_id)
     return {"items": [i.dict() for i in items], "total": total, "page": int(page), "per_page": int(per_page)}
 
 
@@ -967,12 +967,17 @@ def get_quote_request(request_id: int, current_user=Depends(auth.get_current_use
 
 @app.get('/api/quotes/requests')
 def list_quote_requests(current_user=Depends(auth.get_current_user)):
-    """List all quote requests"""
+    """List all quote requests for current user's organization"""
     try:
         with get_session() as s:
-            # Admin and managers see all requests
+            # Admin and managers see all requests in their organization
             if current_user.role in ['admin', 'manager']:
-                requests = s.exec(select(QuoteRequest)).all()
+                # Filter by users in the same organization
+                requests = s.exec(
+                    select(QuoteRequest)
+                    .join(User, QuoteRequest.user_id == User.id)
+                    .where(User.organization_id == current_user.organization_id)
+                ).all()
             else:
                 # Others only see their own
                 requests = s.exec(

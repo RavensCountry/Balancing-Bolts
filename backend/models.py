@@ -9,6 +9,12 @@ class Role(str, Enum):
     maintenance = "maintenance"
     leasing = "leasing"
 
+class Organization(SQLModel, table=True):
+    """Represents a company/organization for multi-tenancy"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -16,11 +22,13 @@ class User(SQLModel, table=True):
     role: Role = Field(default=Role.maintenance)
     hashed_password: Optional[str] = None
     current_property_id: Optional[int] = Field(default=None, foreign_key="property.id")
+    organization_id: Optional[int] = Field(default=None, foreign_key="organization.id")
 
 class Property(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     address: Optional[str] = None
+    organization_id: Optional[int] = Field(default=None, foreign_key="organization.id")
 
 class UserPropertyAccess(SQLModel, table=True):
     """Junction table for many-to-many relationship between users and properties"""

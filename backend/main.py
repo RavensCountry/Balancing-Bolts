@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
 from .database import get_session, engine
-from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice
+from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice, Organization
 from .database import init_db
 from . import ai
 from . import auth
@@ -51,6 +51,19 @@ try:
     migrations = [
         "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS invoice_id INTEGER;",
         "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS is_auto_generated BOOLEAN DEFAULT FALSE;",
+        # Organization multi-tenancy migrations
+        """CREATE TABLE IF NOT EXISTS organization (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );""",
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);',
+        "ALTER TABLE property ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);",
+        # Create default organization for existing data
+        "INSERT INTO organization (name) SELECT 'Default Organization' WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
+        # Assign existing users/properties to default organization
+        'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
+        "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
     ]
 
     with engine.connect() as conn:

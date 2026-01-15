@@ -1279,6 +1279,7 @@
         </div>
         <div id="customModalMessage" class="custom-modal-message"></div>
         <div class="custom-modal-footer">
+          <button id="customModalCancelBtn" class="custom-modal-btn custom-modal-btn-secondary" style="display:none;">Cancel</button>
           <button id="customModalBtn" class="custom-modal-btn custom-modal-btn-primary">OK</button>
         </div>
       </div>
@@ -1808,78 +1809,97 @@
 
       // Custom Modal System
       let modalAutoCloseTimer = null;
+      let modalResolve = null;
 
-      function showModal(message, type = 'info', title = null, autoDismiss = true) {
-        const overlay = document.getElementById('customModalOverlay');
-        const icon = document.getElementById('customModalIcon');
-        const titleEl = document.getElementById('customModalTitle');
-        const messageEl = document.getElementById('customModalMessage');
-        const btn = document.getElementById('customModalBtn');
+      function showModal(message, type = 'info', title = null, autoDismiss = true, showCancel = false) {
+        return new Promise((resolve) => {
+          const overlay = document.getElementById('customModalOverlay');
+          const icon = document.getElementById('customModalIcon');
+          const titleEl = document.getElementById('customModalTitle');
+          const messageEl = document.getElementById('customModalMessage');
+          const btn = document.getElementById('customModalBtn');
+          const cancelBtn = document.getElementById('customModalCancelBtn');
 
-        // Clear any existing auto-close timer
-        if (modalAutoCloseTimer) {
-          clearTimeout(modalAutoCloseTimer);
-          modalAutoCloseTimer = null;
-        }
-
-        // Set icon and title based on type
-        const config = {
-          success: { icon: '✓', title: 'Success', class: 'success', duration: 3000 },
-          error: { icon: '✕', title: 'Error', class: 'error', duration: 5000 },
-          warning: { icon: '⚠', title: 'Warning', class: 'warning', duration: 4000 },
-          info: { icon: 'ℹ', title: 'Information', class: 'info', duration: 3000 }
-        };
-
-        const modalConfig = config[type] || config.info;
-
-        // Update icon
-        icon.textContent = modalConfig.icon;
-        icon.className = 'custom-modal-icon ' + modalConfig.class;
-
-        // Update title
-        titleEl.textContent = title || modalConfig.title;
-
-        // Update message
-        messageEl.textContent = message;
-
-        // Show modal
-        overlay.classList.add('active');
-
-        // Function to close modal
-        const closeModal = () => {
-          overlay.classList.remove('active');
+          // Clear any existing auto-close timer
           if (modalAutoCloseTimer) {
             clearTimeout(modalAutoCloseTimer);
             modalAutoCloseTimer = null;
           }
-        };
 
-        // Close on button click
-        btn.onclick = closeModal;
+          // Set icon and title based on type
+          const config = {
+            success: { icon: '✓', title: 'Success', class: 'success', duration: 3000 },
+            error: { icon: '✕', title: 'Error', class: 'error', duration: 5000 },
+            warning: { icon: '⚠', title: 'Warning', class: 'warning', duration: 4000 },
+            info: { icon: 'ℹ', title: 'Information', class: 'info', duration: 3000 },
+            confirm: { icon: '?', title: 'Confirm', class: 'warning', duration: 0 }
+          };
 
-        // Close on overlay click
-        overlay.onclick = (e) => {
-          if (e.target === overlay) {
-            closeModal();
+          const modalConfig = config[type] || config.info;
+
+          // Update icon
+          icon.textContent = modalConfig.icon;
+          icon.className = 'custom-modal-icon ' + modalConfig.class;
+
+          // Update title
+          titleEl.textContent = title || modalConfig.title;
+
+          // Update message
+          messageEl.textContent = message;
+
+          // Show/hide cancel button
+          if (showCancel) {
+            cancelBtn.style.display = 'inline-block';
+            autoDismiss = false; // Don't auto-dismiss confirm dialogs
+          } else {
+            cancelBtn.style.display = 'none';
           }
-        };
 
-        // Close on Escape key
-        const escHandler = (e) => {
-          if (e.key === 'Escape') {
-            closeModal();
-            document.removeEventListener('keydown', escHandler);
+          // Show modal
+          overlay.classList.add('active');
+
+          // Function to close modal
+          const closeModal = (result = true) => {
+            overlay.classList.remove('active');
+            if (modalAutoCloseTimer) {
+              clearTimeout(modalAutoCloseTimer);
+              modalAutoCloseTimer = null;
+            }
+            // Remove event listeners
+            overlay.onclick = null;
+            resolve(result);
+          };
+
+          // Close on OK button click
+          btn.onclick = () => closeModal(true);
+
+          // Close on Cancel button click
+          cancelBtn.onclick = () => closeModal(false);
+
+          // Close on overlay click (only for non-confirm dialogs)
+          overlay.onclick = (e) => {
+            if (e.target === overlay && !showCancel) {
+              closeModal(true);
+            }
+          };
+
+          // Close on Escape key
+          const escHandler = (e) => {
+            if (e.key === 'Escape') {
+              closeModal(showCancel ? false : true);
+              document.removeEventListener('keydown', escHandler);
+            }
+          };
+          document.addEventListener('keydown', escHandler);
+
+          // Auto-dismiss after duration (longer for errors so user can read them)
+          if (autoDismiss && modalConfig.duration > 0) {
+            modalAutoCloseTimer = setTimeout(() => {
+              closeModal(true);
+              document.removeEventListener('keydown', escHandler);
+            }, modalConfig.duration);
           }
-        };
-        document.addEventListener('keydown', escHandler);
-
-        // Auto-dismiss after duration (longer for errors so user can read them)
-        if (autoDismiss) {
-          modalAutoCloseTimer = setTimeout(() => {
-            closeModal();
-            document.removeEventListener('keydown', escHandler);
-          }, modalConfig.duration);
-        }
+        });
       }
 
       // Override alert to use custom modal
@@ -1896,6 +1916,13 @@
         }
 
         showModal(message, type);
+      };
+
+      // Override confirm to use custom modal
+      const originalConfirm = window.confirm;
+      window.confirm = function(message) {
+        // Return the promise directly - it will resolve to true/false
+        return showModal(message, 'confirm', 'Confirm', false, true);
       };
 
       // Auth functions
@@ -2235,7 +2262,7 @@
           return;
         }
 
-        if (!confirm('Are you sure you want to delete this property?')) {
+        if (!await confirm('Are you sure you want to delete this property?')) {
           return;
         }
 
@@ -2875,7 +2902,7 @@
       }
 
       async function removePropertyAccess(employeeId, propertyId) {
-        if (!confirm('Remove this property access?')) return;
+        if (!await confirm('Remove this property access?')) return;
 
         try {
           const res = await fetch(`/api/users/${employeeId}/properties/${propertyId}/revoke`, {
@@ -2976,12 +3003,12 @@
       }
 
       async function deleteEmployee(employeeId, employeeName) {
-        if (!confirm(`⚠️ WARNING ⚠️\n\nThis will permanently delete ${employeeName} and remove their login access.\n\nAre you sure you want to continue?`)) {
+        if (!await confirm(`⚠️ WARNING ⚠️\n\nThis will permanently delete ${employeeName} and remove their login access.\n\nAre you sure you want to continue?`)) {
           return;
         }
 
         // Double confirmation
-        if (!confirm(`This action cannot be undone. Delete ${employeeName}?`)) {
+        if (!await confirm(`This action cannot be undone. Delete ${employeeName}?`)) {
           return;
         }
 
@@ -3043,7 +3070,7 @@
       }
 
       async function revokePropertyAccess(userId, propertyId, userName, propertyName) {
-        if (!confirm(`Remove ${userName}'s access to ${propertyName}?`)) return;
+        if (!await confirm(`Remove ${userName}'s access to ${propertyName}?`)) return;
 
         try {
           const res = await fetch(`/api/users/${userId}/properties/${propertyId}/revoke`, {
@@ -3263,7 +3290,7 @@
       }
 
       async function deleteVendorCredential(credentialId) {
-        if (!confirm('Are you sure you want to delete this vendor credential?')) {
+        if (!await confirm('Are you sure you want to delete this vendor credential?')) {
           return;
         }
 
@@ -3549,7 +3576,7 @@
       }
 
       async function deleteQuoteRequest(requestId) {
-        if (!confirm('Are you sure you want to delete this entire quote request? This will delete all associated quotes and cannot be undone.')) {
+        if (!await confirm('Are you sure you want to delete this entire quote request? This will delete all associated quotes and cannot be undone.')) {
           return;
         }
 
@@ -3583,7 +3610,7 @@
       }
 
       async function deleteQuote(quoteId, requestId) {
-        if (!confirm('Are you sure you want to delete this quote? This cannot be undone.')) {
+        if (!await confirm('Are you sure you want to delete this quote? This cannot be undone.')) {
           return;
         }
 

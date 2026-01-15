@@ -1807,19 +1807,27 @@
       let properties = [];
 
       // Custom Modal System
-      function showModal(message, type = 'info', title = null) {
+      let modalAutoCloseTimer = null;
+
+      function showModal(message, type = 'info', title = null, autoDismiss = true) {
         const overlay = document.getElementById('customModalOverlay');
         const icon = document.getElementById('customModalIcon');
         const titleEl = document.getElementById('customModalTitle');
         const messageEl = document.getElementById('customModalMessage');
         const btn = document.getElementById('customModalBtn');
 
+        // Clear any existing auto-close timer
+        if (modalAutoCloseTimer) {
+          clearTimeout(modalAutoCloseTimer);
+          modalAutoCloseTimer = null;
+        }
+
         // Set icon and title based on type
         const config = {
-          success: { icon: '✓', title: 'Success', class: 'success' },
-          error: { icon: '✕', title: 'Error', class: 'error' },
-          warning: { icon: '⚠', title: 'Warning', class: 'warning' },
-          info: { icon: 'ℹ', title: 'Information', class: 'info' }
+          success: { icon: '✓', title: 'Success', class: 'success', duration: 3000 },
+          error: { icon: '✕', title: 'Error', class: 'error', duration: 5000 },
+          warning: { icon: '⚠', title: 'Warning', class: 'warning', duration: 4000 },
+          info: { icon: 'ℹ', title: 'Information', class: 'info', duration: 3000 }
         };
 
         const modalConfig = config[type] || config.info;
@@ -1837,26 +1845,41 @@
         // Show modal
         overlay.classList.add('active');
 
-        // Close on button click
-        btn.onclick = () => {
+        // Function to close modal
+        const closeModal = () => {
           overlay.classList.remove('active');
+          if (modalAutoCloseTimer) {
+            clearTimeout(modalAutoCloseTimer);
+            modalAutoCloseTimer = null;
+          }
         };
+
+        // Close on button click
+        btn.onclick = closeModal;
 
         // Close on overlay click
         overlay.onclick = (e) => {
           if (e.target === overlay) {
-            overlay.classList.remove('active');
+            closeModal();
           }
         };
 
         // Close on Escape key
         const escHandler = (e) => {
           if (e.key === 'Escape') {
-            overlay.classList.remove('active');
+            closeModal();
             document.removeEventListener('keydown', escHandler);
           }
         };
         document.addEventListener('keydown', escHandler);
+
+        // Auto-dismiss after duration (longer for errors so user can read them)
+        if (autoDismiss) {
+          modalAutoCloseTimer = setTimeout(() => {
+            closeModal();
+            document.removeEventListener('keydown', escHandler);
+          }, modalConfig.duration);
+        }
       }
 
       // Override alert to use custom modal

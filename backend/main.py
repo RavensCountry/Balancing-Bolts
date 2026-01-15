@@ -148,7 +148,7 @@ try:
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
         # Set super admin - ONLY for balancingbolts@gmail.com (platform owner)
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
-        'UPDATE "user" SET is_super_admin = TRUE WHERE email = \'balancingbolts@gmail.com\';',  # Only grant to the platform owner account
+        'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE email = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
     ]
 
     with engine.connect() as conn:

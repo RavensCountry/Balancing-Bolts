@@ -146,8 +146,9 @@ try:
         # Assign existing users/properties to default organization
         'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
-        # Set balancingbolts as super admin
-        'UPDATE "user" SET is_super_admin = TRUE WHERE email = \'balancingbolts@balancingbolts.com\' OR email LIKE \'%balancingbolts%\';',
+        # Set super admin - ONLY for balancingbolts accounts
+        'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
+        'UPDATE "user" SET is_super_admin = TRUE WHERE email LIKE \'%balancingbolts%\' AND email NOT LIKE \'%@gmail.com\' AND email NOT LIKE \'%@yahoo.com\' AND email NOT LIKE \'%@hotmail.com\';',  # Then grant only to balancingbolts domain
     ]
 
     with engine.connect() as conn:
@@ -730,6 +731,14 @@ def update_user_role(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # SECURITY: Prevent modification of super admin accounts
+        if user.is_super_admin:
+            raise HTTPException(status_code=403, detail="Cannot modify super admin accounts")
+
+        # SECURITY: Only allow admins to modify users in their own organization
+        if not current_user.is_super_admin and user.organization_id != current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Cannot modify users from other organizations")
+
         user.role = role
         s.add(user)
         s.commit()
@@ -749,9 +758,17 @@ def delete_user(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # SECURITY: Prevent deleting super admin accounts
+        if user.is_super_admin:
+            raise HTTPException(status_code=403, detail="Cannot delete super admin accounts")
+
         # Prevent deleting yourself
         if user.id == current_user.id:
             raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+        # SECURITY: Only allow admins to delete users in their own organization
+        if not current_user.is_super_admin and user.organization_id != current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Cannot delete users from other organizations")
 
         # Delete user (cascade will handle related records)
         s.delete(user)

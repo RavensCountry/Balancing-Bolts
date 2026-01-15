@@ -1278,6 +1278,7 @@
           </div>
         </div>
         <div id="customModalMessage" class="custom-modal-message"></div>
+        <input id="customModalInput" type="text" style="display:none; width: 100%; padding: 0.75rem; border: 2px solid var(--card-border); border-radius: 8px; font-size: 1rem; margin-bottom: 1rem; font-family: inherit; background: var(--card-bg); color: var(--text-primary);" />
         <div class="custom-modal-footer">
           <button id="customModalCancelBtn" class="custom-modal-btn custom-modal-btn-secondary" style="display:none;">Cancel</button>
           <button id="customModalBtn" class="custom-modal-btn custom-modal-btn-primary">OK</button>
@@ -1811,7 +1812,7 @@
       let modalAutoCloseTimer = null;
       let modalResolve = null;
 
-      function showModal(message, type = 'info', title = null, autoDismiss = true, showCancel = false) {
+      function showModal(message, type = 'info', title = null, autoDismiss = true, showCancel = false, showInput = false, defaultValue = '') {
         return new Promise((resolve) => {
           const overlay = document.getElementById('customModalOverlay');
           const icon = document.getElementById('customModalIcon');
@@ -1819,6 +1820,7 @@
           const messageEl = document.getElementById('customModalMessage');
           const btn = document.getElementById('customModalBtn');
           const cancelBtn = document.getElementById('customModalCancelBtn');
+          const inputEl = document.getElementById('customModalInput');
 
           // Clear any existing auto-close timer
           if (modalAutoCloseTimer) {
@@ -1832,7 +1834,8 @@
             error: { icon: '✕', title: 'Error', class: 'error', duration: 5000 },
             warning: { icon: '⚠', title: 'Warning', class: 'warning', duration: 4000 },
             info: { icon: 'ℹ', title: 'Information', class: 'info', duration: 3000 },
-            confirm: { icon: '?', title: 'Confirm', class: 'warning', duration: 0 }
+            confirm: { icon: '?', title: 'Confirm', class: 'warning', duration: 0 },
+            prompt: { icon: '✏', title: 'Input Required', class: 'info', duration: 0 }
           };
 
           const modalConfig = config[type] || config.info;
@@ -1847,11 +1850,24 @@
           // Update message
           messageEl.textContent = message;
 
+          // Show/hide input field
+          if (showInput) {
+            inputEl.style.display = 'block';
+            inputEl.value = defaultValue;
+            cancelBtn.style.display = 'inline-block';
+            autoDismiss = false;
+            // Focus input after a brief delay to ensure modal is visible
+            setTimeout(() => inputEl.focus(), 100);
+          } else {
+            inputEl.style.display = 'none';
+            inputEl.value = '';
+          }
+
           // Show/hide cancel button
           if (showCancel) {
             cancelBtn.style.display = 'inline-block';
-            autoDismiss = false; // Don't auto-dismiss confirm dialogs
-          } else {
+            autoDismiss = false; // Don't auto-dismiss confirm/prompt dialogs
+          } else if (!showInput) {
             cancelBtn.style.display = 'none';
           }
 
@@ -1867,7 +1883,13 @@
             }
             // Remove event listeners
             overlay.onclick = null;
-            resolve(result);
+
+            // Return input value for prompts, boolean for confirms, undefined for alerts
+            if (showInput) {
+              resolve(result ? inputEl.value : null);
+            } else {
+              resolve(result);
+            }
           };
 
           // Close on OK button click
@@ -1876,9 +1898,9 @@
           // Close on Cancel button click
           cancelBtn.onclick = () => closeModal(false);
 
-          // Close on overlay click (only for non-confirm dialogs)
+          // Close on overlay click (only for non-confirm/prompt dialogs)
           overlay.onclick = (e) => {
-            if (e.target === overlay && !showCancel) {
+            if (e.target === overlay && !showCancel && !showInput) {
               closeModal(true);
             }
           };
@@ -1886,7 +1908,11 @@
           // Close on Escape key
           const escHandler = (e) => {
             if (e.key === 'Escape') {
-              closeModal(showCancel ? false : true);
+              closeModal((showCancel || showInput) ? false : true);
+              document.removeEventListener('keydown', escHandler);
+            } else if (e.key === 'Enter' && showInput) {
+              // Submit on Enter for prompts
+              closeModal(true);
               document.removeEventListener('keydown', escHandler);
             }
           };
@@ -1922,7 +1948,14 @@
       const originalConfirm = window.confirm;
       window.confirm = function(message) {
         // Return the promise directly - it will resolve to true/false
-        return showModal(message, 'confirm', 'Confirm', false, true);
+        return showModal(message, 'confirm', 'Confirm', false, true, false);
+      };
+
+      // Override prompt to use custom modal
+      const originalPrompt = window.prompt;
+      window.prompt = function(message, defaultValue = '') {
+        // Return the promise directly - it will resolve to input value or null
+        return showModal(message, 'prompt', 'Input Required', false, false, true, defaultValue);
       };
 
       // Auth functions
@@ -1970,7 +2003,7 @@
         }
 
         // Ask for company name
-        const companyName = prompt('What is your company/organization name?\n\n(This will create a new organization. Leave empty to join an existing one if invited.)');
+        const companyName = await prompt('What is your company/organization name?\n\n(This will create a new organization. Leave empty to join an existing one if invited.)');
 
         const fd = new URLSearchParams();
         fd.append('name', email.split('@')[0] || email);
@@ -3037,7 +3070,7 @@
       }
 
       async function editUserRole(userId, userName, currentRole) {
-        const newRole = prompt(`Change role for ${userName}\n\nCurrent role: ${currentRole}\n\nEnter new role (admin, manager, maintenance, leasing):`, currentRole);
+        const newRole = await prompt(`Change role for ${userName}\n\nCurrent role: ${currentRole}\n\nEnter new role (admin, manager, maintenance, leasing):`, currentRole);
 
         if (!newRole || newRole === currentRole) return;
 

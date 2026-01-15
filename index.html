@@ -1135,9 +1135,155 @@
         background: var(--success-light);
         color: var(--success);
       }
+
+      /* Custom Modal Styles */
+      .custom-modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        z-index: 10000;
+        animation: fadeIn 0.2s ease;
+      }
+
+      .custom-modal-overlay.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .custom-modal {
+        background: var(--card-bg);
+        border-radius: 16px;
+        padding: 2rem;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+        animation: slideUp 0.3s ease;
+        border: 1px solid var(--card-border);
+      }
+
+      .custom-modal-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .custom-modal-icon {
+        font-size: 2.5rem;
+        flex-shrink: 0;
+      }
+
+      .custom-modal-icon.success {
+        color: var(--success);
+      }
+
+      .custom-modal-icon.error {
+        color: var(--danger);
+      }
+
+      .custom-modal-icon.warning {
+        color: var(--warning);
+      }
+
+      .custom-modal-icon.info {
+        color: var(--info);
+      }
+
+      .custom-modal-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0;
+      }
+
+      .custom-modal-message {
+        color: var(--text-secondary);
+        font-size: 1rem;
+        line-height: 1.6;
+        margin-bottom: 1.5rem;
+      }
+
+      .custom-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+      }
+
+      .custom-modal-btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+      }
+
+      .custom-modal-btn-primary {
+        background: var(--primary);
+        color: white;
+      }
+
+      .custom-modal-btn-primary:hover {
+        background: var(--primary-hover);
+        transform: translateY(-1px);
+      }
+
+      .custom-modal-btn-secondary {
+        background: var(--card-border);
+        color: var(--text-secondary);
+      }
+
+      .custom-modal-btn-secondary:hover {
+        background: var(--text-muted);
+        color: var(--card-bg);
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
     </style>
   </head>
   <body>
+    <!-- Custom Modal -->
+    <div id="customModalOverlay" class="custom-modal-overlay">
+      <div class="custom-modal">
+        <div class="custom-modal-header">
+          <div id="customModalIcon" class="custom-modal-icon"></div>
+          <div>
+            <h3 id="customModalTitle" class="custom-modal-title"></h3>
+          </div>
+        </div>
+        <div id="customModalMessage" class="custom-modal-message"></div>
+        <div class="custom-modal-footer">
+          <button id="customModalBtn" class="custom-modal-btn custom-modal-btn-primary">OK</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Login Screen -->
     <div id="loginScreen" class="page active">
       <div class="login-container">
@@ -1659,6 +1805,75 @@
       let currentUser = null;
       let currentInvPage = 1;
       let properties = [];
+
+      // Custom Modal System
+      function showModal(message, type = 'info', title = null) {
+        const overlay = document.getElementById('customModalOverlay');
+        const icon = document.getElementById('customModalIcon');
+        const titleEl = document.getElementById('customModalTitle');
+        const messageEl = document.getElementById('customModalMessage');
+        const btn = document.getElementById('customModalBtn');
+
+        // Set icon and title based on type
+        const config = {
+          success: { icon: '✓', title: 'Success', class: 'success' },
+          error: { icon: '✕', title: 'Error', class: 'error' },
+          warning: { icon: '⚠', title: 'Warning', class: 'warning' },
+          info: { icon: 'ℹ', title: 'Information', class: 'info' }
+        };
+
+        const modalConfig = config[type] || config.info;
+
+        // Update icon
+        icon.textContent = modalConfig.icon;
+        icon.className = 'custom-modal-icon ' + modalConfig.class;
+
+        // Update title
+        titleEl.textContent = title || modalConfig.title;
+
+        // Update message
+        messageEl.textContent = message;
+
+        // Show modal
+        overlay.classList.add('active');
+
+        // Close on button click
+        btn.onclick = () => {
+          overlay.classList.remove('active');
+        };
+
+        // Close on overlay click
+        overlay.onclick = (e) => {
+          if (e.target === overlay) {
+            overlay.classList.remove('active');
+          }
+        };
+
+        // Close on Escape key
+        const escHandler = (e) => {
+          if (e.key === 'Escape') {
+            overlay.classList.remove('active');
+            document.removeEventListener('keydown', escHandler);
+          }
+        };
+        document.addEventListener('keydown', escHandler);
+      }
+
+      // Override alert to use custom modal
+      const originalAlert = window.alert;
+      window.alert = function(message) {
+        // Determine type based on message content
+        let type = 'info';
+        if (message.toLowerCase().includes('success') || message.toLowerCase().includes('created') || message.toLowerCase().includes('deleted')) {
+          type = 'success';
+        } else if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
+          type = 'error';
+        } else if (message.toLowerCase().includes('warning') || message.toLowerCase().includes('sure')) {
+          type = 'warning';
+        }
+
+        showModal(message, type);
+      };
 
       // Auth functions
       async function doLogin() {

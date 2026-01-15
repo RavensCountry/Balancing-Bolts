@@ -23,6 +23,7 @@ class User(SQLModel, table=True):
     hashed_password: Optional[str] = None
     current_property_id: Optional[int] = Field(default=None, foreign_key="property.id")
     organization_id: Optional[int] = Field(default=None, foreign_key="organization.id")
+    is_super_admin: bool = Field(default=False)  # Platform owner, sees all organizations
 
 class Property(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

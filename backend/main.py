@@ -59,11 +59,15 @@ try:
         );""",
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);',
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);",
+        # Super admin column
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE;',
         # Create default organization for existing data
         "INSERT INTO organization (name) SELECT 'Default Organization' WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
         # Assign existing users/properties to default organization
         'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
+        # Set balancingbolts as super admin
+        'UPDATE "user" SET is_super_admin = TRUE WHERE email = \'balancingbolts@balancingbolts.com\' OR email LIKE \'%balancingbolts%\';',
     ]
 
     with engine.connect() as conn:
@@ -237,7 +241,9 @@ def health_check():
 
 @app.get('/api/properties')
 def get_properties(current_user=Depends(auth.get_current_user)):
-    """Get properties for current user's organization"""
+    """Get properties for current user's organization, or all if super admin"""
+    if current_user.is_super_admin:
+        return [p.dict() for p in list_properties()]  # No org filter for super admin
     return [p.dict() for p in list_properties(organization_id=current_user.organization_id)]
 
 @app.post('/api/properties')
@@ -411,7 +417,8 @@ async def api_add_inventory(property_id: int = Form(...), name: str = Form(...),
 @app.get('/api/inventory')
 def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = None, user=Depends(auth.get_current_user)):
     from .crud import list_inventory
-    items, total = list_inventory(page=int(page), per_page=int(per_page), property_id=property_id, organization_id=user.organization_id)
+    org_id = None if user.is_super_admin else user.organization_id  # Super admin sees all
+    items, total = list_inventory(page=int(page), per_page=int(per_page), property_id=property_id, organization_id=org_id)
     return {"items": [i.dict() for i in items], "total": total, "page": int(page), "per_page": int(per_page)}
 
 
@@ -601,9 +608,12 @@ def revoke_access(
 
 @app.get('/api/users')
 def list_all_users(current_user=Depends(auth.require_role('admin'))):
-    """List all users in current user's organization (admin only)"""
+    """List all users in current user's organization (admin only), or all if super admin"""
     with get_session() as s:
-        users = s.exec(select(User).where(User.organization_id == current_user.organization_id)).all()
+        if current_user.is_super_admin:
+            users = s.exec(select(User)).all()  # No org filter for super admin
+        else:
+            users = s.exec(select(User).where(User.organization_id == current_user.organization_id)).all()
         return [{"id": u.id, "name": u.name, "email": u.email, "role": u.role} for u in users]
 
 
@@ -967,11 +977,14 @@ def get_quote_request(request_id: int, current_user=Depends(auth.get_current_use
 
 @app.get('/api/quotes/requests')
 def list_quote_requests(current_user=Depends(auth.get_current_user)):
-    """List all quote requests for current user's organization"""
+    """List all quote requests for current user's organization, or all if super admin"""
     try:
         with get_session() as s:
+            # Super admin sees everything across all organizations
+            if current_user.is_super_admin:
+                requests = s.exec(select(QuoteRequest)).all()
             # Admin and managers see all requests in their organization
-            if current_user.role in ['admin', 'manager']:
+            elif current_user.role in ['admin', 'manager']:
                 # Filter by users in the same organization
                 requests = s.exec(
                     select(QuoteRequest)

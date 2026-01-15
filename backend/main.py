@@ -7,6 +7,13 @@ import re
 import requests
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+from pydantic import BaseModel, Field, validator, constr
+from typing import Optional
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
 from .database import get_session, engine
@@ -33,13 +40,86 @@ import io
 
 app = FastAPI()
 
+# ============================================
+# SECURITY CONFIGURATION
+# ============================================
+
+# Rate Limiting Setup
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS Configuration - Strict (only allow your Railway domain)
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://balancing-bolts-production.up.railway.app,http://localhost:8000,http://127.0.0.1:8000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=3600,
 )
+
+# Request Size Limit Middleware
+MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB limit
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > MAX_REQUEST_SIZE:
+                return Response(
+                    content="Request too large. Maximum size is 10MB.",
+                    status_code=413
+                )
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
+# Input Validation Models
+class SafeString(BaseModel):
+    """Validates and sanitizes string input"""
+    value: constr(max_length=500, strip_whitespace=True)
+
+    @validator('value')
+    def sanitize_input(cls, v):
+        # Remove potential XSS characters
+        if v:
+            v = re.sub(r'[<>]', '', v)
+        return v
+
+def sanitize_input(text: str, max_length: int = 500) -> str:
+    """Sanitize user input to prevent XSS and injection attacks"""
+    if not text:
+        return text
+    # Truncate to max length
+    text = text[:max_length]
+    # Remove script tags and dangerous characters
+    text = re.sub(r'<script.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'on\w+\s*=', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
+# ============================================
+# END SECURITY CONFIGURATION
+# ============================================
 
 init_db()
 
@@ -424,7 +504,9 @@ def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = Non
 
 # Auth endpoints
 @app.post('/api/auth/signup')
-def signup(
+@limiter.limit("3/hour")  # Max 3 signups per hour per IP
+async def signup(
+    request: Request,
     name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
@@ -435,6 +517,20 @@ def signup(
     Create a new user account. If company_name provided, creates new organization.
     Otherwise assigns based on email domain or default organization.
     """
+    # Sanitize inputs
+    name = sanitize_input(name, max_length=100)
+    email = sanitize_input(email, max_length=100).lower()
+    if company_name:
+        company_name = sanitize_input(company_name, max_length=200)
+
+    # Validate email format
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    # Validate password strength
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+
     with get_session() as s:
         # Check if user already exists
         existing = s.exec(select(User).where(User.email == email)).first()
@@ -469,7 +565,8 @@ def signup(
 
 
 @app.post('/api/auth/login')
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute")  # Max 5 login attempts per minute per IP
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     user = auth.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail='Invalid credentials')

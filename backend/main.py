@@ -146,9 +146,9 @@ try:
         # Assign existing users/properties to default organization
         'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
-        # Set super admin - ONLY for balancingbolts accounts
+        # Set super admin - ONLY for balancingbolts@gmail.com (platform owner)
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
-        'UPDATE "user" SET is_super_admin = TRUE WHERE email LIKE \'%balancingbolts%\' AND email NOT LIKE \'%@gmail.com\' AND email NOT LIKE \'%@yahoo.com\' AND email NOT LIKE \'%@hotmail.com\';',  # Then grant only to balancingbolts domain
+        'UPDATE "user" SET is_super_admin = TRUE WHERE email = \'balancingbolts@gmail.com\';',  # Only grant to the platform owner account
     ]
 
     with engine.connect() as conn:
@@ -775,6 +775,39 @@ def delete_user(
         s.commit()
 
         return {"status": "success", "message": f"User {user.name} deleted successfully"}
+
+
+@app.post('/api/users/{user_id}/super-admin')
+def grant_super_admin(
+    user_id: int,
+    grant: bool = Form(...),
+    current_user=Depends(auth.get_current_user)
+):
+    """Grant or revoke super admin status (super admin only)"""
+    # SECURITY: Only super admin can modify super admin status
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=403, detail="Only super admin can grant/revoke super admin status")
+
+    with get_session() as s:
+        user = s.exec(select(User).where(User.id == user_id)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Prevent removing your own super admin status
+        if user.id == current_user.id and not grant:
+            raise HTTPException(status_code=400, detail="Cannot revoke your own super admin status")
+
+        user.is_super_admin = grant
+        s.add(user)
+        s.commit()
+        s.refresh(user)
+
+        action = "granted to" if grant else "revoked from"
+        return {
+            "status": "success",
+            "message": f"Super admin {action} {user.name}",
+            "user": {"id": user.id, "name": user.name, "email": user.email, "is_super_admin": user.is_super_admin}
+        }
 
 
 # ===== VENDOR QUOTE MANAGEMENT =====

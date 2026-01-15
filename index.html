@@ -2855,7 +2855,30 @@
                 Update Role
               </button>
             </div>
+        `;
 
+        // Only show super admin controls if current user is super admin
+        if (currentUser && currentUser.is_super_admin) {
+          const isSuperAdmin = employee.is_super_admin || false;
+          html += `
+            <div style="margin-bottom: 1.5rem; padding: 1rem; background: ${isSuperAdmin ? 'var(--warning-light)' : 'var(--info-light)'}; border-radius: 8px; border: 2px solid ${isSuperAdmin ? 'var(--warning)' : 'var(--info)'};">
+              <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 1.5rem;">👑</span>
+                Super Admin Status
+              </h4>
+              <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.875rem;">
+                ${isSuperAdmin ? '⚡ This user has platform-wide access to all organizations' : '🔒 This user can only access their own organization'}
+              </p>
+              <button class="btn-${isSuperAdmin ? 'danger' : 'primary'}"
+                      onclick="toggleSuperAdmin(${employee.id}, ${!isSuperAdmin})"
+                      style="width: 100%;">
+                ${isSuperAdmin ? '❌ Revoke Super Admin' : '✨ Grant Super Admin'}
+              </button>
+            </div>
+          `;
+        }
+
+        html += `
             <div style="margin-bottom: 1.5rem;">
               <h4 style="margin: 0 0 1rem 0;">Property Access (${employee.properties?.length || 0})</h4>
         `;
@@ -2932,6 +2955,38 @@
           } else {
             const data = await res.json();
             alert(`Failed to update role: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function toggleSuperAdmin(employeeId, grant) {
+        const action = grant ? 'grant' : 'revoke';
+        const message = grant
+          ? '⚠️ WARNING: This will give this user access to ALL organizations and ALL data across the entire platform. Are you sure?'
+          : 'Are you sure you want to revoke super admin access?';
+
+        if (!await confirm(message)) return;
+
+        try {
+          const fd = new FormData();
+          fd.append('grant', grant);
+
+          const res = await fetch(`/api/users/${employeeId}/super-admin`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            alert(data.message);
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to ${action} super admin: ${data.detail || 'Unknown error'}`);
           }
         } catch (e) {
           alert(`Error: ${e.message}`);

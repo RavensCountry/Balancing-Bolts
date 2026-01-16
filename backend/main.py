@@ -143,14 +143,14 @@ try:
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);",
         # Super admin column
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE;',
-        # Create default organization for existing data
-        "INSERT INTO organization (name) SELECT 'Default Organization' WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
+        # Create default organization for existing data (with created_at)
+        "INSERT INTO organization (name, created_at) SELECT 'Default Organization', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
         # Assign existing users/properties to default organization
         'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
-        # Set super admin - ONLY for balancingbolts@gmail.com (platform owner)
+        # Set super admin - ONLY for balancingbolts@gmail.com (platform owner) - ALWAYS RUN THIS
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
-        'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE email = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
+        'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE LOWER(email) = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
     ]
 
     with engine.connect() as conn:

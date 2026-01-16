@@ -2696,6 +2696,19 @@
             <p><strong>Role:</strong> <span class="badge">${currentUser.role}</span></p>
           `;
 
+          // Show super admin badge if user is super admin
+          if (currentUser.is_super_admin) {
+            html += `
+              <div style="margin-top: 1rem; padding: 1rem; background: var(--warning-light); border: 2px solid var(--warning); border-radius: 8px;">
+                <strong style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span style="font-size: 1.5rem;">👑</span>
+                  Super Admin
+                </strong>
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: var(--text-secondary);">Platform-wide access to all organizations</p>
+              </div>
+            `;
+          }
+
           if (currentUser.current_property_id) {
             html += `<p><strong>Property ID:</strong> ${currentUser.current_property_id}</p>`;
           } else {

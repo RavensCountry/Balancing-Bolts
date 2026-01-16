@@ -826,6 +826,7 @@ def check_balancingbolts_status():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.get('/api/fix-balancingbolts-admin')
 @app.post('/api/fix-balancingbolts-admin')
 def fix_balancingbolts_admin():
     """Emergency endpoint to set balancingbolts@gmail.com as admin - no auth required"""

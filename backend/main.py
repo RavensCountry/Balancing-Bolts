@@ -3,6 +3,8 @@ import asyncio
 import os
 import logging
 import sys
+
+# Version: 2.1.0 - Force restart to apply super admin migration
 import re
 import requests
 from fastapi.security import OAuth2PasswordRequestForm

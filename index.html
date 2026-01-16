@@ -2183,6 +2183,8 @@
           }
 
           currentUser = await res.json();
+          console.log('🔐 Current User Loaded:', currentUser);
+          console.log('👑 Is Super Admin:', currentUser.is_super_admin);
           let html = `
             <p><strong>Name:</strong> ${currentUser.name}</p>
             <p><strong>Email:</strong> ${currentUser.email}</p>
@@ -2690,6 +2692,7 @@
       async function loadUserSettings() {
         // User info is already loaded in currentUser
         if (currentUser) {
+          console.log('⚙️ Loading User Settings - Super Admin Status:', currentUser.is_super_admin);
           let html = `
             <p><strong>Name:</strong> ${currentUser.name}</p>
             <p><strong>Email:</strong> ${currentUser.email}</p>
@@ -2698,6 +2701,7 @@
 
           // Show super admin badge if user is super admin
           if (currentUser.is_super_admin) {
+            console.log('✅ Super Admin badge will be displayed');
             html += `
               <div style="margin-top: 1rem; padding: 1rem; background: var(--warning-light); border: 2px solid var(--warning); border-radius: 8px;">
                 <strong style="display: flex; align-items: center; gap: 0.5rem;">

@@ -621,7 +621,15 @@ def admin_list_users(user=Depends(auth.require_role('admin'))):
 @app.get('/api/auth/me')
 async def get_current_user_info(user: User = Depends(auth.get_current_user)):
     """Return current logged-in user info including property assignment."""
-    return {'id': user.id, 'name': user.name, 'email': user.email, 'role': user.role, 'current_property_id': user.current_property_id}
+    return {
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'role': user.role,
+        'current_property_id': user.current_property_id,
+        'organization_id': user.organization_id,
+        'is_super_admin': user.is_super_admin
+    }
 
 
 # Admin endpoints to control background poller

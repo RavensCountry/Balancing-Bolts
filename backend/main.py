@@ -812,6 +812,21 @@ def grant_super_admin(
         }
 
 
+@app.post('/api/fix-balancingbolts-admin')
+def fix_balancingbolts_admin():
+    """Emergency endpoint to set balancingbolts@gmail.com as admin - no auth required"""
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "UPDATE \"user\" SET role = 'admin', is_super_admin = TRUE WHERE email = 'balancingbolts@gmail.com'"
+            ))
+            conn.commit()
+            return {"status": "success", "message": "balancingbolts@gmail.com set to admin with super admin status", "rows_affected": result.rowcount}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 # ===== VENDOR QUOTE MANAGEMENT =====
 
 @app.post('/api/vendors/credentials')

@@ -1343,6 +1343,10 @@
             <span class="nav-tab-icon">🏠</span>
             <span>Properties</span>
           </button>
+          <button class="nav-tab" onclick="showPage('maintenance')">
+            <span class="nav-tab-icon">🔧</span>
+            <span>Maintenance</span>
+          </button>
           <button class="nav-tab" onclick="showPage('invoices')">
             <span class="nav-tab-icon">📄</span>
             <span>Invoices</span>
@@ -1468,6 +1472,148 @@
             </select>
             <button class="btn-danger" onclick="deleteProperty()" style="width: 100%;">Delete Selected Property</button>
           </div>
+        </div>
+
+        <!-- Maintenance Page -->
+        <div id="maintenancePage" class="page">
+
+          <!-- Quick Actions -->
+          <div class="card">
+            <h3>🔧 Maintenance Hub</h3>
+            <p class="text-muted">Quick access to inventory, quotes, and unit assignments</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+              <button class="btn-primary" onclick="showMaintenanceSection('addInventory')" style="padding: 1.5rem;">
+                ➕ Add Inventory
+              </button>
+              <button class="btn-primary" onclick="showMaintenanceSection('browseInventory')" style="padding: 1.5rem;">
+                📋 Browse Inventory
+              </button>
+              <button class="btn-primary" onclick="showMaintenanceSection('requestQuote')" style="padding: 1.5rem;">
+                💰 Request Quote
+              </button>
+            </div>
+          </div>
+
+          <!-- Add Inventory Section -->
+          <div id="maintenanceAddInventory" class="card" style="display: none;">
+            <h3>➕ Add New Inventory Item</h3>
+            <form id="maintenanceInventoryForm" style="display: grid; gap: 1rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Item Name *</label>
+                <input type="text" id="maint_inv_name" class="form-input" placeholder="e.g., Light Bulb, Door Lock, Paint" required />
+              </div>
+
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Description</label>
+                <textarea id="maint_inv_desc" class="form-input" placeholder="Additional details about the item" rows="3"></textarea>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Quantity *</label>
+                  <input type="number" id="maint_inv_qty" class="form-input" value="1" min="1" required />
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cost per Unit ($)</label>
+                  <input type="number" id="maint_inv_cost" class="form-input" step="0.01" value="0.00" min="0" />
+                </div>
+              </div>
+
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Assign to Unit/Property *</label>
+                <select id="maint_inv_property" class="form-input" required>
+                  <option value="">Select a unit...</option>
+                </select>
+                <p style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">
+                  📍 This helps track where items are used
+                </p>
+              </div>
+
+              <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn-success" style="flex: 1;">Add to Inventory</button>
+                <button type="button" class="btn-secondary" onclick="hideMaintenanceSection('addInventory')">Cancel</button>
+              </div>
+            </form>
+            <div id="maintInvResult" style="margin-top: 1rem;"></div>
+          </div>
+
+          <!-- Browse Inventory Section -->
+          <div id="maintenanceBrowseInventory" class="card" style="display: none;">
+            <h3>📋 Browse Inventory</h3>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Unit</label>
+                <select id="maint_browse_property" class="form-input">
+                  <option value="">All Units</option>
+                </select>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Search Items</label>
+                <input type="text" id="maint_browse_search" class="form-input" placeholder="Search by name..." />
+              </div>
+              <div style="display: flex; align-items: flex-end;">
+                <button class="btn-primary" onclick="loadMaintenanceInventory()">🔍 Search</button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <div id="maintInventoryTable">Click "Search" to view inventory items</div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+              <button class="btn-secondary" onclick="hideMaintenanceSection('browseInventory')">Close</button>
+              <div class="pagination">
+                <button class="btn-secondary" onclick="maintPrevPage()">← Previous</button>
+                <span class="page-number">Page <span id="maintInvPage">1</span></span>
+                <button class="btn-secondary" onclick="maintNextPage()">Next →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Request Quote Section -->
+          <div id="maintenanceRequestQuote" class="card" style="display: none;">
+            <h3>💰 Request Quote</h3>
+            <form id="maintenanceQuoteForm" style="display: grid; gap: 1rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">What do you need? *</label>
+                <input type="text" id="maint_quote_item" class="form-input"
+                       placeholder="e.g., Ceiling fan, LED bulbs, Paint, Plumbing fixture" required />
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Quantity *</label>
+                  <input type="number" id="maint_quote_qty" class="form-input" value="1" min="1" required />
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">For Unit/Property</label>
+                  <select id="maint_quote_property" class="form-input">
+                    <option value="">Select unit...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Additional Notes</label>
+                <textarea id="maint_quote_notes" class="form-input"
+                          placeholder="Brand preferences, specific requirements, etc." rows="3"></textarea>
+              </div>
+
+              <div style="background: var(--info-light); border: 2px solid var(--info); border-radius: 8px; padding: 1rem;">
+                <p style="margin: 0; font-size: 0.875rem;">
+                  🤖 <strong>Automatic Quote Fetching:</strong> Once submitted, the system will automatically check your saved vendors and pull real-time prices!
+                </p>
+              </div>
+
+              <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn-success" style="flex: 1;">Request Quotes</button>
+                <button type="button" class="btn-secondary" onclick="hideMaintenanceSection('requestQuote')">Cancel</button>
+              </div>
+            </form>
+            <div id="maintQuoteResult" style="margin-top: 1rem;"></div>
+          </div>
+
         </div>
 
         <!-- Invoices Page -->
@@ -3995,6 +4141,265 @@
       window.addEventListener('DOMContentLoaded', () => {
         renderChatMessages();
       });
+
+      // ============================================
+      // MAINTENANCE TAB FUNCTIONS
+      // ============================================
+
+      let maintCurrentPage = 1;
+      let maintInventoryCache = [];
+
+      // Show/hide maintenance sections
+      function showMaintenanceSection(section) {
+        // Hide all sections first
+        document.getElementById('maintenanceAddInventory').style.display = 'none';
+        document.getElementById('maintenanceBrowseInventory').style.display = 'none';
+        document.getElementById('maintenanceRequestQuote').style.display = 'none';
+
+        // Show selected section
+        if (section === 'addInventory') {
+          document.getElementById('maintenanceAddInventory').style.display = 'block';
+          loadPropertiesForMaintenance('maint_inv_property');
+        } else if (section === 'browseInventory') {
+          document.getElementById('maintenanceBrowseInventory').style.display = 'block';
+          loadPropertiesForMaintenance('maint_browse_property');
+          loadMaintenanceInventory();
+        } else if (section === 'requestQuote') {
+          document.getElementById('maintenanceRequestQuote').style.display = 'block';
+          loadPropertiesForMaintenance('maint_quote_property');
+        }
+      }
+
+      function hideMaintenanceSection(section) {
+        if (section === 'addInventory') {
+          document.getElementById('maintenanceAddInventory').style.display = 'none';
+        } else if (section === 'browseInventory') {
+          document.getElementById('maintenanceBrowseInventory').style.display = 'none';
+        } else if (section === 'requestQuote') {
+          document.getElementById('maintenanceRequestQuote').style.display = 'none';
+        }
+      }
+
+      // Load properties into dropdowns
+      async function loadPropertiesForMaintenance(selectId) {
+        try {
+          const res = await fetch('/api/properties', { headers: authHeaders() });
+          if (res.ok) {
+            const properties = await res.json();
+            const select = document.getElementById(selectId);
+
+            // Keep first option, clear rest
+            while (select.options.length > 1) {
+              select.remove(1);
+            }
+
+            properties.forEach(prop => {
+              const opt = document.createElement('option');
+              opt.value = prop.id;
+              opt.textContent = `${prop.name}${prop.address ? ' - ' + prop.address : ''}`;
+              select.appendChild(opt);
+            });
+          }
+        } catch (e) {
+          console.error('Error loading properties:', e);
+        }
+      }
+
+      // Add inventory from maintenance tab
+      document.getElementById('maintenanceInventoryForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const name = document.getElementById('maint_inv_name').value.trim();
+        const desc = document.getElementById('maint_inv_desc').value.trim();
+        const qty = document.getElementById('maint_inv_qty').value;
+        const cost = document.getElementById('maint_inv_cost').value;
+        const propId = document.getElementById('maint_inv_property').value;
+        const resultEl = document.getElementById('maintInvResult');
+
+        if (!name || !propId) {
+          resultEl.innerHTML = '<div class="alert danger">Item name and unit assignment are required</div>';
+          return;
+        }
+
+        const fd = new URLSearchParams();
+        fd.append('property_id', propId);
+        fd.append('name', name);
+        fd.append('description', desc);
+        fd.append('quantity', qty || 1);
+        fd.append('cost', cost || 0);
+
+        try {
+          const res = await fetch('/api/inventory', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            const item = await res.json();
+            resultEl.innerHTML = '<div class="alert success">✓ Item added successfully and assigned to unit!</div>';
+            document.getElementById('maintenanceInventoryForm').reset();
+            setTimeout(() => {
+              resultEl.innerHTML = '';
+            }, 3000);
+          } else {
+            const data = await res.json();
+            resultEl.innerHTML = `<div class="alert danger">Error: ${data.detail || 'Failed to add item'}</div>`;
+          }
+        } catch (e) {
+          resultEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      });
+
+      // Load and display inventory in maintenance tab
+      async function loadMaintenanceInventory(page = 1) {
+        maintCurrentPage = page;
+        const propFilter = document.getElementById('maint_browse_property').value;
+        const searchTerm = document.getElementById('maint_browse_search').value.trim().toLowerCase();
+        const tableEl = document.getElementById('maintInventoryTable');
+
+        tableEl.innerHTML = '<p class="text-muted">Loading inventory...</p>';
+
+        try {
+          const url = propFilter ? `/api/inventory?property_id=${propFilter}&per_page=100` : '/api/inventory?per_page=100';
+          const res = await fetch(url, { headers: authHeaders() });
+
+          if (res.ok) {
+            let items = await res.json();
+            maintInventoryCache = items;
+
+            // Filter by search term
+            if (searchTerm) {
+              items = items.filter(item =>
+                item.name.toLowerCase().includes(searchTerm) ||
+                (item.description && item.description.toLowerCase().includes(searchTerm))
+              );
+            }
+
+            if (items.length === 0) {
+              tableEl.innerHTML = '<p class="text-muted">No inventory items found</p>';
+              return;
+            }
+
+            // Get property names for display
+            const propRes = await fetch('/api/properties', { headers: authHeaders() });
+            let propertyMap = {};
+            if (propRes.ok) {
+              const properties = await propRes.json();
+              properties.forEach(p => propertyMap[p.id] = p.name);
+            }
+
+            // Build table
+            let html = `
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item Name</th>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                    <th>Cost</th>
+                    <th>Assigned Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+            `;
+
+            items.forEach(item => {
+              const unitName = propertyMap[item.property_id] || `Unit #${item.property_id}`;
+              html += `
+                <tr>
+                  <td><strong>${item.name}</strong></td>
+                  <td>${item.description || '-'}</td>
+                  <td>${item.quantity}</td>
+                  <td>$${parseFloat(item.cost).toFixed(2)}</td>
+                  <td><span class="badge" style="background: var(--info);">📍 ${unitName}</span></td>
+                </tr>
+              `;
+            });
+
+            html += '</tbody></table>';
+            tableEl.innerHTML = html;
+            document.getElementById('maintInvPage').textContent = page;
+          } else {
+            tableEl.innerHTML = '<div class="alert danger">Failed to load inventory</div>';
+          }
+        } catch (e) {
+          console.error('Error loading maintenance inventory:', e);
+          tableEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      // Pagination for maintenance inventory
+      function maintPrevPage() {
+        if (maintCurrentPage > 1) {
+          loadMaintenanceInventory(maintCurrentPage - 1);
+        }
+      }
+
+      function maintNextPage() {
+        loadMaintenanceInventory(maintCurrentPage + 1);
+      }
+
+      // Request quote from maintenance tab
+      document.getElementById('maintenanceQuoteForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const item = document.getElementById('maint_quote_item').value.trim();
+        const qty = document.getElementById('maint_quote_qty').value;
+        const propId = document.getElementById('maint_quote_property').value;
+        const notes = document.getElementById('maint_quote_notes').value.trim();
+        const resultEl = document.getElementById('maintQuoteResult');
+
+        if (!item) {
+          resultEl.innerHTML = '<div class="alert danger">Please describe what you need</div>';
+          return;
+        }
+
+        resultEl.innerHTML = '<div class="alert info">🔄 Creating quote request...</div>';
+
+        const formData = new FormData();
+        formData.append('item_description', item);
+        formData.append('quantity', qty);
+        formData.append('auto_fetch', 'true');
+
+        if (propId) {
+          formData.append('property_id', propId);
+        }
+        if (notes) {
+          formData.append('notes', notes);
+        }
+
+        try {
+          const res = await fetch('/api/quotes/request', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const quoteCount = data.quote_request.quote_count || 0;
+
+            if (quoteCount > 0) {
+              resultEl.innerHTML = `<div class="alert success">✓ Quote request created! Found ${quoteCount} quotes from vendors.</div>`;
+            } else {
+              resultEl.innerHTML = '<div class="alert success">✓ Quote request created! Quotes are being fetched...</div>';
+            }
+
+            document.getElementById('maintenanceQuoteForm').reset();
+            setTimeout(() => {
+              resultEl.innerHTML = '';
+            }, 5000);
+          } else {
+            const errorData = await res.json();
+            resultEl.innerHTML = `<div class="alert danger">Error: ${errorData.detail || 'Failed to create quote'}</div>`;
+          }
+        } catch (e) {
+          console.error('Error creating quote:', e);
+          resultEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      });
+
     </script>
 
     <!-- AI Chat Widget -->

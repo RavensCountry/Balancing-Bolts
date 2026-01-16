@@ -812,17 +812,51 @@ def grant_super_admin(
         }
 
 
+@app.get('/api/check-balancingbolts-status')
+def check_balancingbolts_status():
+    """Check current status of balancingbolts account"""
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT id, name, email, role, is_super_admin, organization_id FROM \"user\" WHERE email ILIKE '%balancingbolts%'"
+            ))
+            users = [dict(row._mapping) for row in result]
+            return {"status": "success", "users": users}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post('/api/fix-balancingbolts-admin')
 def fix_balancingbolts_admin():
     """Emergency endpoint to set balancingbolts@gmail.com as admin - no auth required"""
     from sqlalchemy import text
     try:
         with engine.connect() as conn:
+            # First check what exists
+            check = conn.execute(text(
+                "SELECT id, email, role, is_super_admin FROM \"user\" WHERE LOWER(email) = 'balancingbolts@gmail.com'"
+            ))
+            before = [dict(row._mapping) for row in check]
+
+            # Update
             result = conn.execute(text(
-                "UPDATE \"user\" SET role = 'admin', is_super_admin = TRUE WHERE email = 'balancingbolts@gmail.com'"
+                "UPDATE \"user\" SET role = 'admin', is_super_admin = TRUE WHERE LOWER(email) = 'balancingbolts@gmail.com'"
             ))
             conn.commit()
-            return {"status": "success", "message": "balancingbolts@gmail.com set to admin with super admin status", "rows_affected": result.rowcount}
+
+            # Check after
+            check = conn.execute(text(
+                "SELECT id, email, role, is_super_admin FROM \"user\" WHERE LOWER(email) = 'balancingbolts@gmail.com'"
+            ))
+            after = [dict(row._mapping) for row in check]
+
+            return {
+                "status": "success",
+                "message": "balancingbolts@gmail.com set to admin with super admin status",
+                "rows_affected": result.rowcount,
+                "before": before,
+                "after": after
+            }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

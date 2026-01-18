@@ -1520,13 +1520,8 @@
               </div>
 
               <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Assign to Unit/Property *</label>
-                <select id="maint_inv_property" class="form-input" required>
-                  <option value="">Select a unit...</option>
-                </select>
-                <p style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">
-                  📍 This helps track where items are used
-                </p>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Property ID (optional)</label>
+                <input type="number" id="maint_inv_property" class="form-input" placeholder="Leave blank for general inventory" />
               </div>
 
               <div style="display: flex; gap: 1rem;">
@@ -1539,35 +1534,21 @@
 
           <!-- Browse Inventory Section -->
           <div id="maintenanceBrowseInventory" class="card" style="display: none;">
-            <h3>📋 Browse Inventory</h3>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
-              <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Unit</label>
-                <select id="maint_browse_property" class="form-input">
-                  <option value="">All Units</option>
-                </select>
-              </div>
-              <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Search Items</label>
-                <input type="text" id="maint_browse_search" class="form-input" placeholder="Search by name..." />
-              </div>
-              <div style="display: flex; align-items: flex-end;">
-                <button class="btn-primary" onclick="loadMaintenanceInventory()">🔍 Search</button>
-              </div>
+            <h3>📋 Inventory Browser</h3>
+            <div class="input-group">
+              <input id="maint_browse_property" type="number" placeholder="Property ID (optional)" />
+              <input id="maint_browse_per_page" type="number" placeholder="Items per page" value="10" />
+              <button class="btn-primary" onclick="loadMaintenanceInventory(1)">Load Inventory</button>
             </div>
 
             <div class="table-container">
-              <div id="maintInventoryTable">Click "Search" to view inventory items</div>
+              <div id="maintInventoryTable">Click "Load Inventory" to view items</div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
-              <button class="btn-secondary" onclick="hideMaintenanceSection('browseInventory')">Close</button>
-              <div class="pagination">
-                <button class="btn-secondary" onclick="maintPrevPage()">← Previous</button>
-                <span class="page-number">Page <span id="maintInvPage">1</span></span>
-                <button class="btn-secondary" onclick="maintNextPage()">Next →</button>
-              </div>
+            <div class="pagination">
+              <button class="btn-secondary" onclick="maintPrevPage()">← Previous</button>
+              <span class="page-number">Page <span id="maintInvPage">1</span></span>
+              <button class="btn-secondary" onclick="maintNextPage()">Next →</button>
             </div>
           </div>
 
@@ -4159,11 +4140,8 @@
         // Show selected section
         if (section === 'addInventory') {
           document.getElementById('maintenanceAddInventory').style.display = 'block';
-          loadPropertiesForMaintenance('maint_inv_property');
         } else if (section === 'browseInventory') {
           document.getElementById('maintenanceBrowseInventory').style.display = 'block';
-          loadPropertiesForMaintenance('maint_browse_property');
-          loadMaintenanceInventory();
         } else if (section === 'requestQuote') {
           document.getElementById('maintenanceRequestQuote').style.display = 'block';
           loadPropertiesForMaintenance('maint_quote_property');
@@ -4216,13 +4194,15 @@
         const propId = document.getElementById('maint_inv_property').value;
         const resultEl = document.getElementById('maintInvResult');
 
-        if (!name || !propId) {
-          resultEl.innerHTML = '<div class="alert danger">Item name and unit assignment are required</div>';
+        if (!name) {
+          resultEl.innerHTML = '<div class="alert danger">Item name is required</div>';
           return;
         }
 
         const fd = new URLSearchParams();
-        fd.append('property_id', propId);
+        if (propId) {
+          fd.append('property_id', propId);
+        }
         fd.append('name', name);
         fd.append('description', desc);
         fd.append('quantity', qty || 1);
@@ -4237,7 +4217,7 @@
 
           if (res.ok) {
             const item = await res.json();
-            resultEl.innerHTML = '<div class="alert success">✓ Item added successfully and assigned to unit!</div>';
+            resultEl.innerHTML = '<div class="alert success">✓ Item added successfully!</div>';
             document.getElementById('maintenanceInventoryForm').reset();
             setTimeout(() => {
               resultEl.innerHTML = '';
@@ -4254,39 +4234,27 @@
       // Load and display inventory in maintenance tab
       async function loadMaintenanceInventory(page = 1) {
         maintCurrentPage = page;
-        const propFilter = document.getElementById('maint_browse_property').value;
-        const searchTerm = document.getElementById('maint_browse_search').value.trim().toLowerCase();
+        const propId = document.getElementById('maint_browse_property').value;
+        const perPage = document.getElementById('maint_browse_per_page').value || 10;
         const tableEl = document.getElementById('maintInventoryTable');
 
-        tableEl.innerHTML = '<p class="text-muted">Loading inventory...</p>';
+        tableEl.innerHTML = '<p class="text-muted">Loading...</p>';
 
         try {
-          const url = propFilter ? `/api/inventory?property_id=${propFilter}&per_page=100` : '/api/inventory?per_page=100';
+          let url = `/api/inventory?page=${page}&per_page=${perPage}`;
+          if (propId) {
+            url += `&property_id=${propId}`;
+          }
+
           const res = await fetch(url, { headers: authHeaders() });
 
           if (res.ok) {
-            let items = await res.json();
-            maintInventoryCache = items;
-
-            // Filter by search term
-            if (searchTerm) {
-              items = items.filter(item =>
-                item.name.toLowerCase().includes(searchTerm) ||
-                (item.description && item.description.toLowerCase().includes(searchTerm))
-              );
-            }
+            const data = await res.json();
+            const items = data.items || [];
 
             if (items.length === 0) {
-              tableEl.innerHTML = '<p class="text-muted">No inventory items found</p>';
+              tableEl.innerHTML = '<p class="text-muted">No items found</p>';
               return;
-            }
-
-            // Get property names for display
-            const propRes = await fetch('/api/properties', { headers: authHeaders() });
-            let propertyMap = {};
-            if (propRes.ok) {
-              const properties = await propRes.json();
-              properties.forEach(p => propertyMap[p.id] = p.name);
             }
 
             // Build table
@@ -4294,25 +4262,26 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Item Name</th>
+                    <th>ID</th>
+                    <th>Name</th>
                     <th>Description</th>
-                    <th>Quantity</th>
+                    <th>Qty</th>
                     <th>Cost</th>
-                    <th>Assigned Unit</th>
+                    <th>Property ID</th>
                   </tr>
                 </thead>
                 <tbody>
             `;
 
             items.forEach(item => {
-              const unitName = propertyMap[item.property_id] || `Unit #${item.property_id}`;
               html += `
                 <tr>
+                  <td>${item.id}</td>
                   <td><strong>${item.name}</strong></td>
                   <td>${item.description || '-'}</td>
                   <td>${item.quantity}</td>
                   <td>$${parseFloat(item.cost).toFixed(2)}</td>
-                  <td><span class="badge" style="background: var(--info);">📍 ${unitName}</span></td>
+                  <td>${item.property_id || '-'}</td>
                 </tr>
               `;
             });

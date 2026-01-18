@@ -151,6 +151,9 @@ try:
         # Set super admin - ONLY for balancingbolts@gmail.com (platform owner) - ALWAYS RUN THIS
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
         'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE LOWER(email) = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
+        # Add invoice tracking to inventory items
+        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoice(id);',
+        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS product_id VARCHAR(255);',
     ]
 
     with engine.connect() as conn:
@@ -492,8 +495,27 @@ def fetch_quote(payload: dict, user=Depends(auth.require_role('manager'))):
     }
 
 @app.post('/api/inventory')
-async def api_add_inventory(property_id: int = Form(...), name: str = Form(...), description: str = Form(None), quantity: int = Form(1), cost: float = Form(0.0), assigned_to: int = Form(None), user=Depends(auth.get_current_user)):
-    item = add_inventory(property_id=int(property_id), name=name, desc=description, qty=int(quantity), cost=float(cost), assigned_to=assigned_to)
+async def api_add_inventory(
+    property_id: int = Form(None),
+    name: str = Form(...),
+    description: str = Form(None),
+    quantity: int = Form(1),
+    cost: float = Form(0.0),
+    assigned_to: int = Form(None),
+    invoice_id: int = Form(None),
+    product_id: str = Form(None),
+    user=Depends(auth.get_current_user)
+):
+    item = add_inventory(
+        property_id=int(property_id) if property_id else None,
+        name=name,
+        desc=description,
+        qty=int(quantity),
+        cost=float(cost),
+        assigned_to=assigned_to,
+        invoice_id=invoice_id,
+        product_id=product_id
+    )
     return item
 
 

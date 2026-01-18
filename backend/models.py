@@ -48,6 +48,8 @@ class InventoryItem(SQLModel, table=True):
     quantity: int = 1
     cost: float = 0.0
     assigned_to_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")  # Link to invoice
+    product_id: Optional[str] = None  # Product/SKU number from invoice/vendor
 
 class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

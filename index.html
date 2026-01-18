@@ -1519,9 +1519,23 @@
                 </div>
               </div>
 
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Property ID (optional)</label>
+                  <input type="number" id="maint_inv_property" class="form-input" placeholder="Leave blank for general inventory" />
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Product/SKU ID (optional)</label>
+                  <input type="text" id="maint_inv_product_id" class="form-input" placeholder="e.g., SKU-12345" />
+                </div>
+              </div>
+
               <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Property ID (optional)</label>
-                <input type="number" id="maint_inv_property" class="form-input" placeholder="Leave blank for general inventory" />
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Invoice ID (optional)</label>
+                <input type="number" id="maint_inv_invoice_id" class="form-input" placeholder="Link to invoice number" />
+                <p style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">
+                  📄 Track which invoice this item was purchased from
+                </p>
               </div>
 
               <div style="display: flex; gap: 1rem;">
@@ -1536,13 +1550,14 @@
           <div id="maintenanceBrowseInventory" class="card" style="display: none;">
             <h3>📋 Inventory Browser</h3>
             <div class="input-group">
+              <input id="maint_browse_name" type="text" placeholder="Search by name..." />
               <input id="maint_browse_property" type="number" placeholder="Property ID (optional)" />
               <input id="maint_browse_per_page" type="number" placeholder="Items per page" value="10" />
-              <button class="btn-primary" onclick="loadMaintenanceInventory(1)">Load Inventory</button>
+              <button class="btn-primary" onclick="loadMaintenanceInventory(1)">🔍 Search</button>
             </div>
 
             <div class="table-container">
-              <div id="maintInventoryTable">Click "Load Inventory" to view items</div>
+              <div id="maintInventoryTable">Enter search criteria and click "Search"</div>
             </div>
 
             <div class="pagination">
@@ -4192,6 +4207,8 @@
         const qty = document.getElementById('maint_inv_qty').value;
         const cost = document.getElementById('maint_inv_cost').value;
         const propId = document.getElementById('maint_inv_property').value;
+        const productId = document.getElementById('maint_inv_product_id').value.trim();
+        const invoiceId = document.getElementById('maint_inv_invoice_id').value;
         const resultEl = document.getElementById('maintInvResult');
 
         if (!name) {
@@ -4207,6 +4224,12 @@
         fd.append('description', desc);
         fd.append('quantity', qty || 1);
         fd.append('cost', cost || 0);
+        if (productId) {
+          fd.append('product_id', productId);
+        }
+        if (invoiceId) {
+          fd.append('invoice_id', invoiceId);
+        }
 
         try {
           const res = await fetch('/api/inventory', {
@@ -4234,6 +4257,7 @@
       // Load and display inventory in maintenance tab
       async function loadMaintenanceInventory(page = 1) {
         maintCurrentPage = page;
+        const nameSearch = document.getElementById('maint_browse_name').value.trim().toLowerCase();
         const propId = document.getElementById('maint_browse_property').value;
         const perPage = document.getElementById('maint_browse_per_page').value || 10;
         const tableEl = document.getElementById('maintInventoryTable');
@@ -4250,7 +4274,16 @@
 
           if (res.ok) {
             const data = await res.json();
-            const items = data.items || [];
+            let items = data.items || [];
+
+            // Filter by name search on client side
+            if (nameSearch) {
+              items = items.filter(item =>
+                item.name.toLowerCase().includes(nameSearch) ||
+                (item.description && item.description.toLowerCase().includes(nameSearch)) ||
+                (item.product_id && item.product_id.toLowerCase().includes(nameSearch))
+              );
+            }
 
             if (items.length === 0) {
               tableEl.innerHTML = '<p class="text-muted">No items found</p>';
@@ -4267,6 +4300,8 @@
                     <th>Description</th>
                     <th>Qty</th>
                     <th>Cost</th>
+                    <th>Product ID</th>
+                    <th>Invoice ID</th>
                     <th>Property ID</th>
                   </tr>
                 </thead>
@@ -4281,6 +4316,8 @@
                   <td>${item.description || '-'}</td>
                   <td>${item.quantity}</td>
                   <td>$${parseFloat(item.cost).toFixed(2)}</td>
+                  <td><span class="badge" style="background: var(--info); font-family: monospace;">${item.product_id || '-'}</span></td>
+                  <td>${item.invoice_id ? '#' + item.invoice_id : '-'}</td>
                   <td>${item.property_id || '-'}</td>
                 </tr>
               `;

@@ -54,9 +54,18 @@ def delete_property(property_id: int):
         s.commit()
         return p
 
-def add_inventory(property_id: int, name: str, desc: Optional[str], qty: int, cost: float, assigned_to: Optional[int]=None) -> InventoryItem:
+def add_inventory(property_id: int, name: str, desc: Optional[str], qty: int, cost: float, assigned_to: Optional[int]=None, invoice_id: Optional[int]=None, product_id: Optional[str]=None) -> InventoryItem:
     with get_session() as s:
-        item = InventoryItem(property_id=property_id, name=name, description=desc, quantity=qty, cost=cost, assigned_to_user_id=assigned_to)
+        item = InventoryItem(
+            property_id=property_id,
+            name=name,
+            description=desc,
+            quantity=qty,
+            cost=cost,
+            assigned_to_user_id=assigned_to,
+            invoice_id=invoice_id,
+            product_id=product_id
+        )
         s.add(item)
         s.commit()
         s.refresh(item)

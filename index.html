@@ -1014,8 +1014,7 @@
       .chat-send-btn {
         position: absolute;
         right: 0.625rem;
-        top: 50%;
-        transform: translateY(-50%);
+        top: 0.75rem;
         background: transparent;
         color: #b5bac1;
         border: none;
@@ -3978,13 +3977,29 @@
         document.body.insertAdjacentHTML('beforeend', modal);
       }
 
-      function copyEmailHTML() {
-        if (window.currentEmailHTML) {
-          navigator.clipboard.writeText(window.currentEmailHTML).then(() => {
-            alert('Email HTML copied to clipboard! You can now paste it into your email client.');
-          }).catch(err => {
-            alert('Failed to copy to clipboard. Please manually select and copy the HTML code.');
+      async function copyEmailHTML() {
+        if (!window.currentEmailHTML) return;
+
+        try {
+          // Create a ClipboardItem with both HTML and plain text
+          const htmlBlob = new Blob([window.currentEmailHTML], { type: 'text/html' });
+          const textBlob = new Blob([window.currentEmailHTML.replace(/<[^>]*>/g, '')], { type: 'text/plain' });
+
+          const clipboardItem = new ClipboardItem({
+            'text/html': htmlBlob,
+            'text/plain': textBlob
           });
+
+          await navigator.clipboard.write([clipboardItem]);
+          alert('✅ Email copied to clipboard! You can now paste it directly into your email client (Gmail, Outlook, etc.) and it will appear formatted.');
+        } catch (err) {
+          // Fallback: Try the old method
+          try {
+            await navigator.clipboard.writeText(window.currentEmailHTML);
+            alert('Email HTML copied to clipboard! Paste it into your email client.');
+          } catch (err2) {
+            alert('Failed to copy. Please manually select and copy the content from the preview above.');
+          }
         }
       }
 

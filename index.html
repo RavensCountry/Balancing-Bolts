@@ -829,6 +829,11 @@
         z-index: 10000;
         transition: all 0.3s ease;
         overflow: hidden;
+        box-sizing: border-box;
+      }
+
+      #aiChatWidget * {
+        box-sizing: border-box;
       }
 
       #aiChatWidget.visible {
@@ -965,12 +970,13 @@
       }
 
       .chat-input-container {
-        padding: 1.25rem 1.5rem;
+        padding: 1rem;
         border-top: 1px solid var(--card-border);
         display: flex;
         gap: 0.75rem;
         align-items: flex-end;
         background: var(--card-bg);
+        box-sizing: border-box;
       }
 
       #aiChatWidget.minimized .chat-input-container {
@@ -989,6 +995,8 @@
         max-height: 100px;
         font-family: inherit;
         transition: all 0.2s ease;
+        box-sizing: border-box;
+        min-width: 0;
       }
 
       .chat-input::placeholder {

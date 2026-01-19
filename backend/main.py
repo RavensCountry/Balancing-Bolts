@@ -133,27 +133,28 @@ try:
     migrations = [
         "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS invoice_id INTEGER;",
         "ALTER TABLE quoterequest ADD COLUMN IF NOT EXISTS is_auto_generated BOOLEAN DEFAULT FALSE;",
+        # Add invoice tracking to inventory items (early, before organization stuff)
+        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoice(id);',
+        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS product_id VARCHAR(255);',
         # Organization multi-tenancy migrations
         """CREATE TABLE IF NOT EXISTS organization (
             id SERIAL PRIMARY KEY,
             name VARCHAR NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );""",
+        # Create default organization FIRST before adding foreign keys
+        "INSERT INTO organization (name, created_at) SELECT 'Default Organization', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
+        # Now add the foreign key columns
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);',
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);",
         # Super admin column
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE;',
-        # Create default organization for existing data (with created_at)
-        "INSERT INTO organization (name, created_at) SELECT 'Default Organization', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
-        # Assign existing users/properties to default organization
+        # Assign existing users/properties to default organization (now organization exists)
         'UPDATE "user" SET organization_id = 1 WHERE organization_id IS NULL;',
         "UPDATE property SET organization_id = 1 WHERE organization_id IS NULL;",
         # Set super admin - ONLY for balancingbolts@gmail.com (platform owner) - ALWAYS RUN THIS
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
         'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE LOWER(email) = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
-        # Add invoice tracking to inventory items
-        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoice(id);',
-        'ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS product_id VARCHAR(255);',
     ]
 
     with engine.connect() as conn:

@@ -155,6 +155,8 @@ try:
         # Set super admin - ONLY for balancingbolts@gmail.com (platform owner) - ALWAYS RUN THIS
         'UPDATE "user" SET is_super_admin = FALSE;',  # First, remove super admin from everyone
         'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE LOWER(email) = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
+        # Add notes column to property table
+        "ALTER TABLE property ADD COLUMN IF NOT EXISTS notes TEXT;",
     ]
 
     with engine.connect() as conn:
@@ -462,6 +464,7 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
 class CreatePropertyWithUnitsRequest(BaseModel):
     name: str
     address: Optional[str] = None
+    notes: Optional[str] = None
     units: list = []
 
 
@@ -473,6 +476,7 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
         property_obj = create_property(
             name=request.name,
             address=request.address,
+            notes=request.notes,
             organization_id=user.organization_id
         )
 

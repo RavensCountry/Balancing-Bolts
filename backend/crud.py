@@ -37,9 +37,9 @@ def list_properties(organization_id: Optional[int] = None) -> List[Property]:
             return s.exec(select(Property).where(Property.organization_id == organization_id)).all()
         return s.exec(select(Property)).all()
 
-def create_property(name: str, address: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
+def create_property(name: str, address: Optional[str] = None, notes: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
     with get_session() as s:
-        p = Property(name=name, address=address, organization_id=organization_id)
+        p = Property(name=name, address=address, notes=notes, organization_id=organization_id)
         s.add(p)
         s.commit()
         s.refresh(p)

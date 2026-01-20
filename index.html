@@ -2517,6 +2517,17 @@
                 <div id="unitsPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 0.875rem;"></div>
               </div>
 
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Maintenance Notes (Optional)</label>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                  Add any notes for the maintenance team about this property.
+                </p>
+                <textarea id="modalPropNotes" class="form-control"
+                          placeholder="Enter maintenance notes, special instructions, known issues, etc..."
+                          rows="4"
+                          style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 6px; font-size: 1rem; resize: vertical; font-family: inherit;"></textarea>
+              </div>
+
               <div style="display: flex; gap: 1rem; justify-content: flex-end;">
                 <button class="btn-secondary" onclick="document.getElementById('addPropertyModal').remove()">Cancel</button>
                 <button class="btn-primary" onclick="createPropertyFromModal()">Create Property</button>
@@ -2591,6 +2602,7 @@
       async function createPropertyFromModal() {
         const name = document.getElementById('modalPropName').value.trim();
         const address = document.getElementById('modalPropAddress').value.trim();
+        const notes = document.getElementById('modalPropNotes').value.trim();
 
         if (!name) {
           alert('Please enter a property name');
@@ -2600,6 +2612,7 @@
         const payload = {
           name: name,
           address: address || null,
+          notes: notes || null,
           units: parsedUnits || []
         };
 

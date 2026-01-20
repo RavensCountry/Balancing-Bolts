@@ -145,6 +145,28 @@
         box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
       }
 
+      .nav-notification-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: var(--error);
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 700;
+        min-width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      }
+
+      .nav-tab {
+        position: relative;
+      }
+
       .nav-tab-icon {
         font-size: 1.25rem;
       }
@@ -1383,9 +1405,10 @@
             <span class="nav-tab-icon">🏠</span>
             <span>Properties</span>
           </button>
-          <button class="nav-tab" onclick="showPage('maintenance')">
+          <button class="nav-tab" id="maintenanceTab" onclick="showPage('maintenance')">
             <span class="nav-tab-icon">🔧</span>
             <span>Maintenance</span>
+            <span id="maintenanceNotificationBadge" class="nav-notification-badge" style="display: none;">0</span>
           </button>
           <button class="nav-tab" onclick="showPage('invoices')">
             <span class="nav-tab-icon">📄</span>
@@ -1520,7 +1543,7 @@
           <!-- Quick Actions -->
           <div class="card">
             <h3>🔧 Maintenance Hub</h3>
-            <p class="text-muted">Quick access to inventory, quotes, and unit assignments</p>
+            <p class="text-muted">Quick access to inventory, quotes, unit assignments, and property notes</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
               <button class="btn-primary" onclick="showMaintenanceSection('addInventory')" style="padding: 1.5rem;">
                 ➕ Add Inventory
@@ -1530,6 +1553,9 @@
               </button>
               <button class="btn-primary" onclick="showMaintenanceSection('requestQuote')" style="padding: 1.5rem;">
                 💰 Request Quote
+              </button>
+              <button class="btn-primary" onclick="showMaintenanceSection('propertyNotes')" style="padding: 1.5rem;">
+                📝 Property Notes
               </button>
             </div>
           </div>
@@ -1648,6 +1674,39 @@
               </div>
             </form>
             <div id="maintQuoteResult" style="margin-top: 1rem;"></div>
+          </div>
+
+          <!-- Property Notes Section -->
+          <div id="maintenancePropertyNotes" class="card" style="display: none;">
+            <h3>📝 Property Notes</h3>
+            <p class="text-muted">View and manage maintenance notes for each property</p>
+
+            <div style="margin-bottom: 1.5rem;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Property</label>
+              <select id="notesPropertySelect" class="form-input" onchange="loadPropertyNotes(this.value)" style="width: 100%;">
+                <option value="">Choose a property...</option>
+              </select>
+            </div>
+
+            <div id="propertyNotesContent" style="display: none;">
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Maintenance Notes</label>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                  Add important information, special instructions, known issues, or reminders for this property.
+                </p>
+                <textarea id="propertyNotesText" class="form-input"
+                          placeholder="Enter maintenance notes, special instructions, known issues, scheduled work, etc..."
+                          rows="8"
+                          style="font-family: inherit; resize: vertical;"></textarea>
+              </div>
+
+              <div style="display: flex; gap: 1rem;">
+                <button class="btn-success" onclick="savePropertyNotes()" style="flex: 1;">💾 Save Notes</button>
+                <button class="btn-secondary" onclick="hideMaintenanceSection('propertyNotes')">Cancel</button>
+              </div>
+
+              <div id="notesResult" style="margin-top: 1rem;"></div>
+            </div>
           </div>
 
         </div>
@@ -2405,8 +2464,30 @@
 
           // Populate delete select
           populateDeleteSelect();
+
+          // Update maintenance notification badge (only for managers/admins)
+          updateMaintenanceNotifications();
         } catch (e) {
           console.error('Error fetching properties:', e);
+        }
+      }
+
+      // Update maintenance notification badge
+      function updateMaintenanceNotifications() {
+        if (!currentUser || currentUser.role === 'worker') {
+          // Workers don't see the badge
+          return;
+        }
+
+        // Count properties without notes
+        const propertiesWithoutNotes = properties.filter(p => !p.notes || p.notes.trim() === '').length;
+
+        const badge = document.getElementById('maintenanceNotificationBadge');
+        if (propertiesWithoutNotes > 0) {
+          badge.textContent = propertiesWithoutNotes;
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
         }
       }
 
@@ -2517,17 +2598,6 @@
                 <div id="unitsPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 0.875rem;"></div>
               </div>
 
-              <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Maintenance Notes (Optional)</label>
-                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                  Add any notes for the maintenance team about this property.
-                </p>
-                <textarea id="modalPropNotes" class="form-control"
-                          placeholder="Enter maintenance notes, special instructions, known issues, etc..."
-                          rows="4"
-                          style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 6px; font-size: 1rem; resize: vertical; font-family: inherit;"></textarea>
-              </div>
-
               <div style="display: flex; gap: 1rem; justify-content: flex-end;">
                 <button class="btn-secondary" onclick="document.getElementById('addPropertyModal').remove()">Cancel</button>
                 <button class="btn-primary" onclick="createPropertyFromModal()">Create Property</button>
@@ -2602,7 +2672,6 @@
       async function createPropertyFromModal() {
         const name = document.getElementById('modalPropName').value.trim();
         const address = document.getElementById('modalPropAddress').value.trim();
-        const notes = document.getElementById('modalPropNotes').value.trim();
 
         if (!name) {
           alert('Please enter a property name');
@@ -2612,7 +2681,6 @@
         const payload = {
           name: name,
           address: address || null,
-          notes: notes || null,
           units: parsedUnits || []
         };
 
@@ -4376,6 +4444,7 @@
         document.getElementById('maintenanceAddInventory').style.display = 'none';
         document.getElementById('maintenanceBrowseInventory').style.display = 'none';
         document.getElementById('maintenanceRequestQuote').style.display = 'none';
+        document.getElementById('maintenancePropertyNotes').style.display = 'none';
 
         // Show selected section
         if (section === 'addInventory') {
@@ -4385,6 +4454,9 @@
         } else if (section === 'requestQuote') {
           document.getElementById('maintenanceRequestQuote').style.display = 'block';
           loadPropertiesForMaintenance('maint_quote_property');
+        } else if (section === 'propertyNotes') {
+          document.getElementById('maintenancePropertyNotes').style.display = 'block';
+          loadPropertiesForNotes();
         }
       }
 
@@ -4395,6 +4467,84 @@
           document.getElementById('maintenanceBrowseInventory').style.display = 'none';
         } else if (section === 'requestQuote') {
           document.getElementById('maintenanceRequestQuote').style.display = 'none';
+        } else if (section === 'propertyNotes') {
+          document.getElementById('maintenancePropertyNotes').style.display = 'none';
+          document.getElementById('propertyNotesContent').style.display = 'none';
+        }
+      }
+
+      // Load properties for notes dropdown
+      async function loadPropertiesForNotes() {
+        try {
+          const res = await fetch('/api/properties', { headers: authHeaders() });
+          if (res.ok) {
+            const props = await res.json();
+            const select = document.getElementById('notesPropertySelect');
+            select.innerHTML = '<option value="">Choose a property...</option>';
+            props.forEach(prop => {
+              const opt = document.createElement('option');
+              opt.value = prop.id;
+              opt.textContent = `${prop.name}${prop.address ? ' - ' + prop.address : ''}`;
+              opt.dataset.notes = prop.notes || '';
+              select.appendChild(opt);
+            });
+          }
+        } catch (e) {
+          console.error('Error loading properties:', e);
+        }
+      }
+
+      // Load property notes
+      function loadPropertyNotes(propertyId) {
+        if (!propertyId) {
+          document.getElementById('propertyNotesContent').style.display = 'none';
+          return;
+        }
+
+        const select = document.getElementById('notesPropertySelect');
+        const selectedOption = select.options[select.selectedIndex];
+        const notes = selectedOption.dataset.notes || '';
+
+        document.getElementById('propertyNotesText').value = notes;
+        document.getElementById('propertyNotesContent').style.display = 'block';
+        document.getElementById('notesResult').innerHTML = '';
+      }
+
+      // Save property notes
+      async function savePropertyNotes() {
+        const propertyId = document.getElementById('notesPropertySelect').value;
+        const notes = document.getElementById('propertyNotesText').value.trim();
+        const resultEl = document.getElementById('notesResult');
+
+        if (!propertyId) {
+          resultEl.innerHTML = '<div class="alert danger">Please select a property</div>';
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/properties/${propertyId}/notes`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeaders()
+            },
+            body: JSON.stringify({ notes: notes })
+          });
+
+          if (res.ok) {
+            resultEl.innerHTML = '<div class="alert success">✅ Notes saved successfully!</div>';
+            // Update the dropdown option's data
+            const select = document.getElementById('notesPropertySelect');
+            const selectedOption = select.options[select.selectedIndex];
+            selectedOption.dataset.notes = notes;
+            // Refresh properties list
+            await fetchProperties();
+          } else {
+            const error = await res.json();
+            resultEl.innerHTML = `<div class="alert danger">❌ Error: ${error.detail || 'Failed to save notes'}</div>`;
+          }
+        } catch (e) {
+          resultEl.innerHTML = `<div class="alert danger">❌ Error: ${e.message}</div>`;
         }
       }
 

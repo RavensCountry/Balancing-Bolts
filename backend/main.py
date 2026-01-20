@@ -351,6 +351,29 @@ def delete_property(property_id: int, user=Depends(auth.require_role('admin'))):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class UpdatePropertyNotesRequest(BaseModel):
+    notes: Optional[str] = None
+
+
+@app.put('/api/properties/{property_id}/notes')
+def update_property_notes(property_id: int, request: UpdatePropertyNotesRequest, user=Depends(auth.require_user)):
+    """Update notes for a property"""
+    with get_session() as session:
+        prop = session.exec(select(Property).where(Property.id == property_id)).first()
+        if not prop:
+            raise HTTPException(status_code=404, detail="Property not found")
+
+        # Check access (admin or if user has access to this property)
+        if user.role != 'admin' and not user_can_access_property(user.id, property_id):
+            raise HTTPException(status_code=403, detail="Not authorized to update this property")
+
+        prop.notes = request.notes
+        session.add(prop)
+        session.commit()
+        session.refresh(prop)
+        return {'status': 'ok', 'notes': prop.notes}
+
+
 @app.post('/api/properties/parse-units')
 async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.require_role('admin'))):
     """Parse a unit report (PDF or Excel) and extract unit information"""

@@ -421,6 +421,21 @@
         box-shadow: var(--card-shadow);
       }
 
+      .property-slot.add-property-card {
+        background: transparent;
+        border: 2px dashed var(--card-border);
+        border-color: var(--primary);
+        opacity: 0.6;
+        transition: all 0.3s ease;
+      }
+
+      .property-slot.add-property-card:hover {
+        opacity: 1;
+        background: var(--primary-light);
+        border-style: solid;
+        transform: translateY(-4px);
+      }
+
       .property-name {
         font-weight: 700;
         font-size: 1.125rem;
@@ -2400,26 +2415,32 @@
         const container = document.getElementById('propertiesGrid');
         container.innerHTML = '';
 
-        for (let i = 0; i < 9; i++) {
-          const prop = properties[i];
+        // Render all existing properties
+        properties.forEach(prop => {
           const slot = document.createElement('div');
-          slot.className = 'property-slot' + (prop ? ' filled' : '');
-
-          if (prop) {
-            slot.innerHTML = `
-              <div class="property-name">${prop.name}</div>
-              <div class="property-address">${prop.address || 'No address'}</div>
-              <span class="badge">Property #${prop.id}</span>
-            `;
-          } else {
-            slot.innerHTML = `
-              <div class="property-name text-muted">Empty Slot ${i + 1}</div>
-              <div class="property-address">Available for new property</div>
-            `;
-          }
-
+          slot.className = 'property-slot filled';
+          slot.innerHTML = `
+            <div class="property-name">${prop.name}</div>
+            <div class="property-address">${prop.address || 'No address'}</div>
+            <span class="badge">Property #${prop.id}</span>
+          `;
           container.appendChild(slot);
-        }
+        });
+
+        // Add "Add Property" card
+        const addCard = document.createElement('div');
+        addCard.className = 'property-slot add-property-card';
+        addCard.style.cursor = 'pointer';
+        addCard.onclick = () => {
+          window.scrollTo({ top: document.getElementById('newPropertySection').offsetTop - 100, behavior: 'smooth' });
+          document.getElementById('newPropName').focus();
+        };
+        addCard.innerHTML = `
+          <div class="property-name">Add Property</div>
+          <div class="property-address" style="font-size: 3rem; margin: 1rem 0;">+</div>
+          <span class="badge" style="background: transparent; color: var(--text-muted); border: 1px dashed var(--card-border);">Property #${properties.length + 1}</span>
+        `;
+        container.appendChild(addCard);
       }
 
       // Create property

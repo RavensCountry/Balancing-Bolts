@@ -3794,7 +3794,7 @@
                     ${quote.vendor_item_number ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Item #:</strong> ${quote.vendor_item_number}</p>` : ''}
                     ${quote.availability ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Availability:</strong> ${quote.availability}</p>` : ''}
                     <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-                      ${quote.vendor_url ? `<a href="${quote.vendor_url}" target="_blank" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">View on Website</a>` : ''}
+                      ${quote.vendor_url ? `<a href="${quote.vendor_url}" target="_blank" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">🔍 Search on ${quote.vendor_name}</a>` : ''}
                       <button class="btn-danger" onclick="deleteQuote(${quote.id}, ${quoteRequest.id})"
                               style="padding: 0.5rem 1rem; font-size: 0.875rem; background: var(--error); color: white; border: none; border-radius: 6px; cursor: pointer;">
                         🗑️ Delete

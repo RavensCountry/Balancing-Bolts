@@ -94,7 +94,8 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
-            # Return sample quote
+            # Return sample quote with working search URL
+            search_url = f"{self.BASE_URL}/s/{query.replace(' ', '%20')}"
             return [{
                 'vendor_name': 'Home Depot',
                 'item_name': query,
@@ -104,7 +105,7 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': f"HD-{hash(query) % 100000}",
                 'availability': 'In Stock',
-                'vendor_url': f"{self.BASE_URL}/p/{query.replace(' ', '-')}"
+                'vendor_url': search_url
             }]
         except Exception as e:
             print(f"Home Depot search failed: {e}")
@@ -147,6 +148,8 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
+            # Return sample quote with working search URL
+            search_url = f"{self.BASE_URL}/search?searchTerm={query.replace(' ', '+')}"
             return [{
                 'vendor_name': "Lowe's",
                 'item_name': query,
@@ -156,7 +159,7 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': f"LOW-{hash(query) % 100000}",
                 'availability': 'In Stock - Ready in 2 hours',
-                'vendor_url': f"{self.BASE_URL}/pd/{query.replace(' ', '-')}"
+                'vendor_url': search_url
             }]
         except Exception as e:
             print(f"Lowe's search failed: {e}")
@@ -199,6 +202,8 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
+            # Return sample quote with working search URL
+            search_url = f"{self.BASE_URL}/search?searchQuery={query.replace(' ', '+')}"
             return [{
                 'vendor_name': 'Grainger',
                 'item_name': query,
@@ -208,7 +213,7 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': f"GR-{hash(query) % 100000}",
                 'availability': 'Ships in 1-2 Business Days',
-                'vendor_url': f"{self.BASE_URL}/product/{query.replace(' ', '-')}"
+                'vendor_url': search_url
             }]
         except Exception as e:
             print(f"Grainger search failed: {e}")
@@ -493,7 +498,7 @@ def generate_email_html(quote_request: Dict, quotes: List[Dict]) -> str:
 
         if quote.get('vendor_url'):
             html += f"""
-                    <a href="{quote['vendor_url']}" class="quote-link" target="_blank">View on {quote.get('vendor_name')}</a>
+                    <a href="{quote['vendor_url']}" class="quote-link" target="_blank">🔍 Search on {quote.get('vendor_name')}</a>
             """
 
         html += """

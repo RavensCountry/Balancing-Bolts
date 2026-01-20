@@ -349,6 +349,184 @@ def delete_property(property_id: int, user=Depends(auth.require_role('admin'))):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post('/api/properties/parse-units')
+async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.require_role('admin'))):
+    """Parse a unit report (PDF or Excel) and extract unit information"""
+    try:
+        # Read file content
+        content = await file.read()
+
+        units = []
+        property_name = None
+
+        # Check file type
+        if file.filename.endswith(('.xlsx', '.xls')):
+            # Parse Excel file
+            df = pd.read_excel(io.BytesIO(content))
+
+            # Try to find property name in header rows
+            for i in range(min(5, len(df))):
+                row_values = df.iloc[i].astype(str).tolist()
+                for val in row_values:
+                    if val and len(val) > 3 and not val.replace('.', '').isdigit():
+                        # Potential property name
+                        if not property_name and 'Unit' not in val and 'Type' not in val:
+                            property_name = val.strip()
+                            break
+
+            # Find the header row (look for 'Unit' column)
+            header_row = None
+            for i in range(min(10, len(df))):
+                row_values = df.iloc[i].astype(str).tolist()
+                if any('unit' in str(v).lower() for v in row_values):
+                    header_row = i
+                    break
+
+            if header_row is not None:
+                # Set the header
+                df.columns = df.iloc[header_row]
+                df = df.iloc[header_row + 1:]
+
+                # Find unit and unit type columns
+                unit_col = None
+                type_col = None
+
+                for col in df.columns:
+                    col_lower = str(col).lower().strip()
+                    if col_lower in ['unit', 'unit #', 'unit number', 'unit_number']:
+                        unit_col = col
+                    elif 'type' in col_lower and 'unit' in col_lower:
+                        type_col = col
+
+                # Extract units
+                if unit_col:
+                    for _, row in df.iterrows():
+                        unit_num = str(row[unit_col]).strip()
+                        unit_type = str(row[type_col]).strip() if type_col and pd.notna(row[type_col]) else 'Unknown'
+
+                        # Skip if not a valid unit number
+                        if unit_num and unit_num != 'nan' and unit_num != 'None':
+                            units.append({
+                                'unit_number': unit_num,
+                                'unit_type': unit_type
+                            })
+
+        elif file.filename.endswith('.pdf'):
+            # Parse PDF file
+            import PyPDF2
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+
+            # Extract text from first page
+            first_page_text = pdf_reader.pages[0].extract_text()
+            lines = first_page_text.split('\n')
+
+            # Try to find property name in first few lines
+            for line in lines[:10]:
+                line = line.strip()
+                if line and len(line) > 3 and not line.replace('.', '').isdigit():
+                    if 'Unit' not in line and 'Type' not in line and 'Status' not in line:
+                        property_name = line
+                        break
+
+            # Extract all text
+            all_text = ''
+            for page in pdf_reader.pages:
+                all_text += page.extract_text()
+
+            # Find unit entries using regex
+            # Pattern: unit number followed by unit type (e.g., "112 2-2")
+            import re
+            unit_pattern = r'(\d{2,4})\s+(\d-\d)'
+            matches = re.findall(unit_pattern, all_text)
+
+            for unit_num, unit_type in matches:
+                units.append({
+                    'unit_number': unit_num,
+                    'unit_type': unit_type
+                })
+
+        else:
+            raise HTTPException(status_code=400, detail="File must be PDF or Excel (.xlsx, .xls)")
+
+        return {
+            'units': units,
+            'property_name': property_name,
+            'total_units': len(units)
+        }
+
+    except Exception as e:
+        logger.error(f"Error parsing units file: {e}")
+        raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")
+
+
+class CreatePropertyWithUnitsRequest(BaseModel):
+    name: str
+    address: Optional[str] = None
+    units: list = []
+
+
+@app.post('/api/properties/create-with-units')
+def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Depends(auth.require_role('admin'))):
+    """Create a property with units"""
+    try:
+        # Create the property
+        property_obj = create_property(
+            name=request.name,
+            address=request.address,
+            organization_id=user.organization_id
+        )
+
+        # Create units table if it doesn't exist and store units
+        units_created = 0
+        if request.units:
+            with get_session() as session:
+                from sqlmodel import text
+
+                # Create units table if it doesn't exist
+                session.exec(text("""
+                    CREATE TABLE IF NOT EXISTS property_unit (
+                        id SERIAL PRIMARY KEY,
+                        property_id INTEGER REFERENCES property(id) ON DELETE CASCADE,
+                        unit_number VARCHAR(50) NOT NULL,
+                        unit_type VARCHAR(50),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(property_id, unit_number)
+                    )
+                """))
+                session.commit()
+
+                # Insert units
+                for unit in request.units:
+                    try:
+                        session.exec(text("""
+                            INSERT INTO property_unit (property_id, unit_number, unit_type)
+                            VALUES (:property_id, :unit_number, :unit_type)
+                            ON CONFLICT (property_id, unit_number) DO NOTHING
+                        """), {
+                            'property_id': property_obj.id,
+                            'unit_number': unit['unit_number'],
+                            'unit_type': unit.get('unit_type', 'Unknown')
+                        })
+                        units_created += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to create unit {unit['unit_number']}: {e}")
+
+                session.commit()
+
+        return {
+            'property': {
+                'id': property_obj.id,
+                'name': property_obj.name,
+                'address': property_obj.address
+            },
+            'units_created': units_created
+        }
+
+    except Exception as e:
+        logger.error(f"Error creating property with units: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # Auth endpoints
 
 

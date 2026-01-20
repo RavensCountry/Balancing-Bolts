@@ -2431,10 +2431,7 @@
         const addCard = document.createElement('div');
         addCard.className = 'property-slot add-property-card';
         addCard.style.cursor = 'pointer';
-        addCard.onclick = () => {
-          window.scrollTo({ top: document.getElementById('newPropertySection').offsetTop - 100, behavior: 'smooth' });
-          document.getElementById('newPropName').focus();
-        };
+        addCard.onclick = () => showAddPropertyModal();
         addCard.innerHTML = `
           <div class="property-name">Add Property</div>
           <div class="property-address" style="font-size: 3rem; margin: 1rem 0;">+</div>
@@ -2473,6 +2470,159 @@
           } else {
             const data = await res.json();
             alert(data.detail || 'Error creating property');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      }
+
+      // Show Add Property Modal
+      function showAddPropertyModal() {
+        const modal = `
+          <div id="addPropertyModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+                      display: flex; align-items: center; justify-content: center; z-index: 30000;"
+               onclick="if(event.target.id === 'addPropertyModal') this.remove()">
+            <div class="card" style="max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 2rem;"
+                 onclick="event.stopPropagation();">
+              <h3 id="addPropertyModalHeader" style="margin-top: 0; color: var(--primary);">New Property</h3>
+
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Property Name</label>
+                <input type="text" id="modalPropName" class="form-control"
+                       placeholder="Enter property name..."
+                       oninput="updateModalHeader(this.value)"
+                       style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 6px; font-size: 1rem;">
+              </div>
+
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Property Address (Optional)</label>
+                <input type="text" id="modalPropAddress" class="form-control"
+                       placeholder="Enter address..."
+                       style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 6px; font-size: 1rem;">
+              </div>
+
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Upload Unit Report (PDF or Excel)</label>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                  Upload a unit report to automatically import all unit numbers and types.
+                </p>
+                <input type="file" id="modalUnitFile" accept=".pdf,.xlsx,.xls"
+                       onchange="handleUnitFileUpload(this.files[0])"
+                       style="width: 100%; padding: 0.75rem; border: 2px dashed var(--card-border); border-radius: 6px; cursor: pointer;">
+                <div id="fileUploadStatus" style="margin-top: 0.75rem; font-size: 0.875rem;"></div>
+              </div>
+
+              <div id="unitsPreview" style="display: none; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-gradient-start); border-radius: 6px;">
+                <h4 style="margin-top: 0; font-size: 1rem;">Units Found:</h4>
+                <div id="unitsPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 0.875rem;"></div>
+              </div>
+
+              <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button class="btn-secondary" onclick="document.getElementById('addPropertyModal').remove()">Cancel</button>
+                <button class="btn-primary" onclick="createPropertyFromModal()">Create Property</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modal);
+        document.getElementById('modalPropName').focus();
+      }
+
+      // Update modal header as user types
+      function updateModalHeader(name) {
+        const header = document.getElementById('addPropertyModalHeader');
+        if (name.trim()) {
+          header.textContent = name;
+        } else {
+          header.textContent = 'New Property';
+        }
+      }
+
+      // Store parsed units globally
+      let parsedUnits = null;
+
+      // Handle unit file upload
+      async function handleUnitFileUpload(file) {
+        if (!file) return;
+
+        const statusEl = document.getElementById('fileUploadStatus');
+        statusEl.innerHTML = '<span style="color: var(--primary);">📤 Uploading and parsing file...</span>';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const res = await fetch('/api/properties/parse-units', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('bb_token')}` },
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            parsedUnits = data.units;
+
+            statusEl.innerHTML = `<span style="color: var(--success);">✅ Successfully parsed ${data.units.length} units!</span>`;
+
+            // Show preview
+            document.getElementById('unitsPreview').style.display = 'block';
+            const previewContent = document.getElementById('unitsPreviewContent');
+            previewContent.innerHTML = data.units.slice(0, 20).map(u =>
+              `<div style="padding: 0.25rem 0;"><strong>${u.unit_number}</strong> - ${u.unit_type}</div>`
+            ).join('') + (data.units.length > 20 ? `<div style="padding: 0.5rem 0; font-style: italic;">... and ${data.units.length - 20} more</div>` : '');
+
+            // Auto-fill property name if found
+            if (data.property_name && !document.getElementById('modalPropName').value) {
+              document.getElementById('modalPropName').value = data.property_name;
+              updateModalHeader(data.property_name);
+            }
+          } else {
+            const error = await res.json();
+            statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${error.detail || 'Failed to parse file'}</span>`;
+            parsedUnits = null;
+          }
+        } catch (e) {
+          statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${e.message}</span>`;
+          parsedUnits = null;
+        }
+      }
+
+      // Create property from modal
+      async function createPropertyFromModal() {
+        const name = document.getElementById('modalPropName').value.trim();
+        const address = document.getElementById('modalPropAddress').value.trim();
+
+        if (!name) {
+          alert('Please enter a property name');
+          return;
+        }
+
+        const payload = {
+          name: name,
+          address: address || null,
+          units: parsedUnits || []
+        };
+
+        try {
+          const res = await fetch('/api/properties/create-with-units', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('bb_token')}`
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            alert(`Property created successfully with ${result.units_created || 0} units!`);
+            document.getElementById('addPropertyModal').remove();
+            parsedUnits = null;
+            await fetchProperties();
+            renderProperties();
+          } else {
+            const error = await res.json();
+            alert(error.detail || 'Error creating property');
           }
         } catch (e) {
           alert('Error: ' + e.message);

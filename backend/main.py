@@ -1014,6 +1014,29 @@ def list_organizations(current_user=Depends(auth.get_current_user)):
         return [{"id": org.id, "name": org.name} for org in orgs]
 
 
+@app.post('/api/organizations')
+def create_organization(
+    name: str = Form(...),
+    current_user=Depends(auth.get_current_user)
+):
+    """Create a new organization (super admin only)"""
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=403, detail="Only super admins can create organizations")
+
+    with get_session() as s:
+        # Check if organization already exists
+        existing = s.exec(select(Organization).where(Organization.name == name)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Organization with this name already exists")
+
+        org = Organization(name=name)
+        s.add(org)
+        s.commit()
+        s.refresh(org)
+
+        return {"status": "success", "organization": {"id": org.id, "name": org.name}}
+
+
 @app.post('/api/users/{user_id}/organization')
 def update_user_organization(
     user_id: int,

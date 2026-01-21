@@ -950,7 +950,25 @@ def list_all_users(current_user=Depends(auth.require_role('admin'))):
             users = s.exec(select(User)).all()  # No org filter for super admin
         else:
             users = s.exec(select(User).where(User.organization_id == current_user.organization_id)).all()
-        return [{"id": u.id, "name": u.name, "email": u.email, "role": u.role} for u in users]
+
+        # Include organization info for each user
+        result = []
+        for u in users:
+            user_data = {"id": u.id, "name": u.name, "email": u.email, "role": u.role, "organization_id": u.organization_id}
+
+            # Fetch organization name if organization_id exists
+            if u.organization_id:
+                org = s.exec(select(Organization).where(Organization.id == u.organization_id)).first()
+                if org:
+                    user_data["organization_name"] = org.name
+                else:
+                    user_data["organization_name"] = "Unknown Organization"
+            else:
+                user_data["organization_name"] = "No Organization"
+
+            result.append(user_data)
+
+        return result
 
 
 @app.post('/api/users/{user_id}/role')

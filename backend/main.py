@@ -144,6 +144,8 @@ try:
         );""",
         # Create default organization FIRST before adding foreign keys
         "INSERT INTO organization (name, created_at) SELECT 'Default Organization', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 1);",
+        # Add Balancing Bolts organization
+        "INSERT INTO organization (name, created_at) SELECT 'Balancing Bolts', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM organization WHERE name = 'Balancing Bolts');",
         # Now add the foreign key columns
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);',
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organization(id);",

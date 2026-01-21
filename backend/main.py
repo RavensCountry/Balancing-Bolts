@@ -356,7 +356,7 @@ class UpdatePropertyNotesRequest(BaseModel):
 
 
 @app.put('/api/properties/{property_id}/notes')
-def update_property_notes(property_id: int, request: UpdatePropertyNotesRequest, user=Depends(auth.require_user)):
+def update_property_notes(property_id: int, request: UpdatePropertyNotesRequest, user=Depends(auth.get_current_user)):
     """Update notes for a property"""
     with get_session() as session:
         prop = session.exec(select(Property).where(Property.id == property_id)).first()

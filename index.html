@@ -3341,6 +3341,19 @@
           'leasing': '📋'
         }[employee.role] || '👤';
 
+        // Fetch organizations if super admin
+        let organizations = [];
+        if (currentUser && currentUser.is_super_admin) {
+          try {
+            const res = await fetch('/api/organizations', { headers: authHeaders() });
+            if (res.ok) {
+              organizations = await res.json();
+            }
+          } catch (e) {
+            console.error('Error fetching organizations:', e);
+          }
+        }
+
         const modal = document.createElement('div');
         modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 20000;';
         modal.onclick = (e) => {  if (e.target === modal) modal.remove(); };
@@ -3374,6 +3387,30 @@
 
         // Only show super admin controls if current user is super admin
         if (currentUser && currentUser.is_super_admin) {
+          // Organization selector
+          html += `
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 1rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>🏢</span>
+                Change Organization
+              </h4>
+              <p style="margin: 0 0 0.75rem 0; color: var(--text-secondary); font-size: 0.875rem;">
+                Current: <strong>${employee.organization_name || 'No Organization'}</strong>
+              </p>
+              <select id="employeeOrgSelect" class="form-input">
+                <option value="">No Organization</option>
+                ${organizations.map(org => `
+                  <option value="${org.id}" ${employee.organization_id === org.id ? 'selected' : ''}>
+                    ${org.name}
+                  </option>
+                `).join('')}
+              </select>
+              <button class="btn-primary" onclick="changeEmployeeOrganization(${employee.id})" style="width: 100%; margin-top: 0.5rem;">
+                Update Organization
+              </button>
+            </div>
+          `;
+
           const isSuperAdmin = employee.is_super_admin || false;
           html += `
             <div style="margin-bottom: 1.5rem; padding: 1rem; background: ${isSuperAdmin ? 'var(--warning-light)' : 'var(--info-light)'}; border-radius: 8px; border: 2px solid ${isSuperAdmin ? 'var(--warning)' : 'var(--info)'};">
@@ -3470,6 +3507,36 @@
           } else {
             const data = await res.json();
             alert(`Failed to update role: ${data.detail || 'Unknown error'}`);
+          }
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function changeEmployeeOrganization(employeeId) {
+        const newOrgId = document.getElementById('employeeOrgSelect').value;
+
+        try {
+          const fd = new FormData();
+          if (newOrgId) {
+            fd.append('organization_id', newOrgId);
+          } else {
+            fd.append('organization_id', '');  // Clear organization
+          }
+
+          const res = await fetch(`/api/users/${employeeId}/organization`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          });
+
+          if (res.ok) {
+            alert('Organization updated successfully!');
+            await loadEmployees();
+            document.querySelector('[style*="position: fixed"]').remove();
+          } else {
+            const data = await res.json();
+            alert(`Failed to update organization: ${data.detail || 'Unknown error'}`);
           }
         } catch (e) {
           alert(`Error: ${e.message}`);

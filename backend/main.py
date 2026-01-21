@@ -1003,6 +1003,54 @@ def update_user_role(
         return {"status": "success", "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
 
 
+@app.get('/api/organizations')
+def list_organizations(current_user=Depends(auth.get_current_user)):
+    """List all organizations (super admin only)"""
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=403, detail="Only super admins can list all organizations")
+
+    with get_session() as s:
+        orgs = s.exec(select(Organization)).all()
+        return [{"id": org.id, "name": org.name} for org in orgs]
+
+
+@app.post('/api/users/{user_id}/organization')
+def update_user_organization(
+    user_id: int,
+    organization_id: str = Form(...),
+    current_user=Depends(auth.get_current_user)
+):
+    """Update a user's organization (super admin only)"""
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=403, detail="Only super admins can change user organizations")
+
+    with get_session() as s:
+        user = s.exec(select(User).where(User.id == user_id)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # SECURITY: Prevent modification of super admin accounts
+        if user.is_super_admin:
+            raise HTTPException(status_code=403, detail="Cannot modify super admin accounts")
+
+        # Handle empty string or None to clear organization
+        if organization_id == '' or organization_id == 'None':
+            user.organization_id = None
+        else:
+            org_id = int(organization_id)
+            # Verify organization exists
+            org = s.exec(select(Organization).where(Organization.id == org_id)).first()
+            if not org:
+                raise HTTPException(status_code=404, detail="Organization not found")
+            user.organization_id = org_id
+
+        s.add(user)
+        s.commit()
+        s.refresh(user)
+
+        return {"status": "success", "user": {"id": user.id, "name": user.name, "organization_id": user.organization_id}}
+
+
 @app.delete('/api/users/{user_id}')
 def delete_user(
     user_id: int,

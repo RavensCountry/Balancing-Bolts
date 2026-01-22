@@ -39,6 +39,96 @@ logger = logging.getLogger("backend")
 import pandas as pd
 from datetime import datetime
 import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Email notification function
+def send_admin_notification_email(admin_email: str, admin_name: str, new_user_name: str, new_user_email: str, organization_name: str):
+    """Send email notification to admin when new user joins their organization"""
+    try:
+        # Email configuration from environment variables
+        smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME')
+        smtp_password = os.getenv('SMTP_PASSWORD')
+        from_email = os.getenv('SMTP_FROM_EMAIL', smtp_username)
+
+        if not smtp_username or not smtp_password:
+            logger.warning("SMTP credentials not configured, skipping email notification")
+            return
+
+        # Create message
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f'New User Joined {organization_name} - Balancing Bolts'
+        msg['From'] = from_email
+        msg['To'] = admin_email
+
+        # HTML email body
+        html = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+              <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+                🔔 New User Registration
+              </h2>
+
+              <p>Hello {admin_name},</p>
+
+              <p>A new user has signed up to join <strong>{organization_name}</strong> on Balancing Bolts.</p>
+
+              <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #1f2937;">User Details:</h3>
+                <p style="margin: 5px 0;"><strong>Name:</strong> {new_user_name}</p>
+                <p style="margin: 5px 0;"><strong>Email:</strong> {new_user_email}</p>
+                <p style="margin: 5px 0;"><strong>Organization:</strong> {organization_name}</p>
+              </div>
+
+              <p>The user account has been created successfully and they can now log in to the system.</p>
+
+              <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
+                This is an automated notification from Balancing Bolts.<br>
+                <a href="https://balancing-bolts-production.up.railway.app" style="color: #2563eb;">Log in to manage users</a>
+              </p>
+            </div>
+          </body>
+        </html>
+        """
+
+        # Plain text version
+        text = f"""
+        New User Registration - Balancing Bolts
+
+        Hello {admin_name},
+
+        A new user has signed up to join {organization_name} on Balancing Bolts.
+
+        User Details:
+        - Name: {new_user_name}
+        - Email: {new_user_email}
+        - Organization: {organization_name}
+
+        The user account has been created successfully and they can now log in to the system.
+
+        Log in to manage users: https://balancing-bolts-production.up.railway.app
+        """
+
+        # Attach both HTML and plain text versions
+        part1 = MIMEText(text, 'plain')
+        part2 = MIMEText(html, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
+
+        # Send email
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.send_message(msg)
+
+        logger.info(f"Sent admin notification email to {admin_email}")
+    except Exception as e:
+        logger.error(f"Failed to send email to {admin_email}: {e}")
+        raise
 
 app = FastAPI()
 
@@ -740,18 +830,29 @@ def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = Non
 @limiter.limit("3/hour")  # Max 3 signups per hour per IP
 async def signup(
     request: Request,
-    name: str = Form(...),
+    first_name: str = Form(None),
+    last_name: str = Form(None),
+    name: str = Form(None),
     email: str = Form(...),
     password: str = Form(...),
+    organization_id: int = Form(None),
     role: str = Form('maintenance'),
     company_name: str = Form(None)
 ):
     """
-    Create a new user account. If company_name provided, creates new organization.
-    Otherwise assigns based on email domain or default organization.
+    Create a new user account. Sends notification emails to organization admins.
     """
+    # Build full name from first_name/last_name if provided, otherwise use name
+    if first_name and last_name:
+        full_name = f"{first_name.strip()} {last_name.strip()}"
+    elif name:
+        full_name = name.strip()
+    else:
+        # Extract name from email as fallback
+        full_name = email.split('@')[0]
+
     # Sanitize inputs
-    name = sanitize_input(name, max_length=100)
+    full_name = sanitize_input(full_name, max_length=100)
     email = sanitize_input(email, max_length=100).lower()
     if company_name:
         company_name = sanitize_input(company_name, max_length=200)
@@ -770,15 +871,24 @@ async def signup(
         if existing:
             raise HTTPException(status_code=400, detail="User with this email already exists")
 
-        organization_id = None
+        org_id = None
+        org_name = None
 
-        # If company name provided, create new organization
-        if company_name:
+        # If organization_id provided (from new signup form)
+        if organization_id:
+            org = s.exec(select(Organization).where(Organization.id == organization_id)).first()
+            if not org:
+                raise HTTPException(status_code=400, detail="Invalid organization")
+            org_id = org.id
+            org_name = org.name
+        # If company name provided, create new organization (legacy flow)
+        elif company_name:
             org = Organization(name=company_name)
             s.add(org)
             s.commit()
             s.refresh(org)
-            organization_id = org.id
+            org_id = org.id
+            org_name = org.name
             role = 'admin'  # First user becomes admin
             logger.info(f"Created new organization: {company_name}")
         else:
@@ -789,10 +899,38 @@ async def signup(
                 s.add(default_org)
                 s.commit()
                 s.refresh(default_org)
-            organization_id = default_org.id
+            org_id = default_org.id
+            org_name = default_org.name
 
     # Create user
-    u = create_user(name=name, email=email, role=role, password=password, organization_id=organization_id)
+    u = create_user(name=full_name, email=email, role=role, password=password, organization_id=org_id)
+
+    # Send notification emails to all admins in the organization
+    try:
+        with get_session() as s:
+            admins = s.exec(
+                select(User).where(
+                    User.organization_id == org_id,
+                    User.role == 'admin'
+                )
+            ).all()
+
+            for admin in admins:
+                try:
+                    send_admin_notification_email(
+                        admin_email=admin.email,
+                        admin_name=admin.name,
+                        new_user_name=full_name,
+                        new_user_email=email,
+                        organization_name=org_name
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send notification email to {admin.email}: {e}")
+
+            logger.info(f"New user signup: {full_name} ({email}) joined {org_name}. Notified {len(admins)} admins.")
+    except Exception as e:
+        logger.error(f"Error sending admin notifications: {e}")
+
     token = auth.create_access_token({"sub": u.email})
     return {"access_token": token, "token_type": "bearer", "user": u}
 
@@ -1003,6 +1141,14 @@ def update_user_role(
         s.refresh(user)
 
         return {"status": "success", "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
+
+
+@app.get('/api/organizations/public')
+def list_organizations_public():
+    """List all organizations (public endpoint for signup)"""
+    with get_session() as s:
+        orgs = s.exec(select(Organization)).all()
+        return [{"id": org.id, "name": org.name} for org in orgs]
 
 
 @app.get('/api/organizations')

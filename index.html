@@ -1375,9 +1375,69 @@
           <div class="login-footer">
             If you do not have a login please contact your administrator
             <div class="login-signup-link">
-              Need an account? <button onclick="doSignup()">Sign up here</button>
+              Need an account? <button onclick="showSignupScreen()">Sign up here</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signup Screen -->
+    <div id="signupScreen" class="page">
+      <div class="login-container">
+        <div class="login-card" style="max-width: 600px;">
+          <div class="login-header">
+            <h2>CREATE YOUR ACCOUNT</h2>
+            <p>Join Balancing Bolts</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="login-form-group">
+              <label for="signup_first_name">👤 First Name *</label>
+              <input id="signup_first_name" type="text" placeholder="Enter your first name" required />
+            </div>
+            <div class="login-form-group">
+              <label for="signup_last_name">👤 Last Name *</label>
+              <input id="signup_last_name" type="text" placeholder="Enter your last name" required />
+            </div>
+          </div>
+
+          <div class="login-form-group">
+            <label for="signup_company">🏢 Company / Organization *</label>
+            <select id="signup_company" class="form-input" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-primary);">
+              <option value="">Select your company...</option>
+            </select>
+          </div>
+
+          <div class="login-form-group">
+            <label for="signup_email">📧 Email Address *</label>
+            <input id="signup_email" type="email" placeholder="Enter your email" required />
+          </div>
+
+          <div class="login-form-group">
+            <label for="signup_email_confirm">📧 Confirm Email Address *</label>
+            <input id="signup_email_confirm" type="email" placeholder="Re-enter your email" required />
+          </div>
+
+          <div class="login-form-group">
+            <label for="signup_password">🔒 Password *</label>
+            <input id="signup_password" type="password" placeholder="At least 8 characters" required />
+            <small style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem; display: block;">
+              Minimum 8 characters
+            </small>
+          </div>
+
+          <div class="login-form-group">
+            <label for="signup_password_confirm">🔒 Confirm Password *</label>
+            <input id="signup_password_confirm" type="password" placeholder="Re-enter your password" required />
+          </div>
+
+          <div class="login-buttons">
+            <button class="btn-primary" onclick="submitSignup()" style="width: 100%;">Create Account</button>
+            <button class="btn-secondary" onclick="showLoginScreen()" style="width: 100%; margin-top: 0.5rem;">Back to Login</button>
+          </div>
+
+          <div id="signupMsg" class="mt-2 text-center"></div>
         </div>
       </div>
     </div>
@@ -2231,6 +2291,109 @@
             }, 500);
           } else {
             msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Login failed'}</div>`;
+          }
+        } catch (e) {
+          msgEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;
+        }
+      }
+
+      // Show signup screen
+      async function showSignupScreen() {
+        // Load organizations for the dropdown
+        try {
+          const res = await fetch('/api/organizations/public');
+          if (res.ok) {
+            const organizations = await res.json();
+            const select = document.getElementById('signup_company');
+            select.innerHTML = '<option value="">Select your company...</option>';
+            organizations.forEach(org => {
+              const option = document.createElement('option');
+              option.value = org.id;
+              option.textContent = org.name;
+              select.appendChild(option);
+            });
+          }
+        } catch (e) {
+          console.error('Error loading organizations:', e);
+        }
+
+        // Show signup screen
+        document.getElementById('loginScreen').classList.remove('active');
+        document.getElementById('signupScreen').classList.add('active');
+      }
+
+      // Show login screen
+      function showLoginScreen() {
+        document.getElementById('signupScreen').classList.remove('active');
+        document.getElementById('loginScreen').classList.add('active');
+      }
+
+      // Submit signup form
+      async function submitSignup() {
+        const firstName = document.getElementById('signup_first_name').value.trim();
+        const lastName = document.getElementById('signup_last_name').value.trim();
+        const company = document.getElementById('signup_company').value;
+        const email = document.getElementById('signup_email').value.trim();
+        const emailConfirm = document.getElementById('signup_email_confirm').value.trim();
+        const password = document.getElementById('signup_password').value;
+        const passwordConfirm = document.getElementById('signup_password_confirm').value;
+        const msgEl = document.getElementById('signupMsg');
+
+        // Validation
+        if (!firstName || !lastName) {
+          msgEl.innerHTML = '<div class="alert danger">Please enter your first and last name</div>';
+          return;
+        }
+
+        if (!company) {
+          msgEl.innerHTML = '<div class="alert danger">Please select your company</div>';
+          return;
+        }
+
+        if (!email || !emailConfirm) {
+          msgEl.innerHTML = '<div class="alert danger">Please enter and confirm your email</div>';
+          return;
+        }
+
+        if (email !== emailConfirm) {
+          msgEl.innerHTML = '<div class="alert danger">Email addresses do not match</div>';
+          return;
+        }
+
+        if (!password || !passwordConfirm) {
+          msgEl.innerHTML = '<div class="alert danger">Please enter and confirm your password</div>';
+          return;
+        }
+
+        if (password !== passwordConfirm) {
+          msgEl.innerHTML = '<div class="alert danger">Passwords do not match</div>';
+          return;
+        }
+
+        if (password.length < 8) {
+          msgEl.innerHTML = '<div class="alert danger">Password must be at least 8 characters long</div>';
+          return;
+        }
+
+        // Submit form
+        const fd = new URLSearchParams();
+        fd.append('first_name', firstName);
+        fd.append('last_name', lastName);
+        fd.append('organization_id', company);
+        fd.append('email', email);
+        fd.append('password', password);
+
+        try {
+          const res = await fetch('/api/auth/signup', { method: 'POST', body: fd });
+          const data = await res.json();
+
+          if (res.ok) {
+            msgEl.innerHTML = '<div class="alert success">Account created successfully! Admins have been notified. You can now log in.</div>';
+            setTimeout(() => {
+              showLoginScreen();
+            }, 3000);
+          } else {
+            msgEl.innerHTML = `<div class="alert danger">${data.detail || 'Signup failed'}</div>`;
           }
         } catch (e) {
           msgEl.innerHTML = `<div class="alert danger">Error: ${e.message}</div>`;

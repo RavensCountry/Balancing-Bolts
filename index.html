@@ -71,6 +71,13 @@
         min-height: 100vh;
         line-height: 1.6;
         transition: all 0.3s ease;
+        overflow-x: hidden; /* Prevent horizontal scrolling */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      html {
+        overflow-x: hidden; /* Prevent horizontal scrolling on html too */
       }
 
       .container {
@@ -377,6 +384,7 @@
       /* Table Styles */
       .table-container {
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
         border-radius: 12px;
         border: 1px solid var(--card-border);
         margin-top: 1rem;
@@ -384,6 +392,7 @@
 
       table {
         width: 100%;
+        min-width: 600px; /* Prevent table from becoming too narrow */
         border-collapse: collapse;
       }
 
@@ -1144,6 +1153,155 @@
         .chat-messages {
           max-height: 340px;
           min-height: 340px;
+        }
+
+        /* Mobile-specific table fixes */
+        table {
+          font-size: 0.875rem;
+        }
+
+        table th,
+        table td {
+          padding: 0.5rem;
+        }
+
+        /* Mobile navigation - stack vertically */
+        .nav-tabs {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+
+        .nav-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
+        /* Mobile forms */
+        .form-input,
+        .form-control,
+        input,
+        select,
+        textarea {
+          font-size: 16px !important; /* Prevents zoom on iOS */
+        }
+
+        /* Mobile buttons */
+        .btn-primary,
+        .btn-secondary,
+        .btn-success,
+        .btn-danger {
+          padding: 0.75rem 1rem;
+          font-size: 1rem;
+          min-height: 44px; /* Touch-friendly size */
+        }
+
+        /* Mobile property grid */
+        .property-grid {
+          grid-template-columns: 1fr !important; /* Single column on mobile */
+        }
+
+        .property-slot {
+          min-height: 120px;
+        }
+
+        /* Mobile inventory grid */
+        #inventoryList {
+          grid-template-columns: 1fr !important;
+        }
+
+        /* Mobile modals */
+        .card[style*="position: fixed"] > .card,
+        #addPropertyModal .card {
+          width: 95% !important;
+          max-width: 95% !important;
+          margin: 1rem;
+        }
+
+        /* Mobile signup form - stack columns */
+        #signupScreen .login-card > div[style*="grid-template-columns"] {
+          grid-template-columns: 1fr !important;
+        }
+      }
+
+      /* Tablet styles (768px - 1024px) */
+      @media (min-width: 769px) and (max-width: 1024px) {
+        .container {
+          padding: 1.25rem;
+        }
+
+        .header h1 {
+          font-size: 2.25rem;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        #inventoryList {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        /* Tablet property grid - 2 columns */
+        .property-slot {
+          min-height: 140px;
+        }
+      }
+
+      /* Desktop styles (1025px+) - ensure everything looks good on large screens */
+      @media (min-width: 1025px) {
+        .container {
+          max-width: 1400px;
+        }
+
+        /* Ensure modals don't get too wide on large screens */
+        .card[style*="position: fixed"] > .card {
+          max-width: 800px;
+        }
+      }
+
+      /* Touch device improvements */
+      @media (hover: none) and (pointer: coarse) {
+        /* Increase touch targets for touch devices */
+        button,
+        a,
+        .nav-tab,
+        .property-slot,
+        .stat-card {
+          min-height: 44px;
+          min-width: 44px;
+        }
+
+        /* Remove hover effects on touch devices */
+        .card:hover,
+        .property-slot:hover,
+        .employee-card:hover {
+          transform: none;
+        }
+
+        /* Larger text for readability */
+        body {
+          font-size: 16px;
+        }
+      }
+
+      /* Landscape mode on phones */
+      @media (max-width: 768px) and (orientation: landscape) {
+        .header {
+          padding: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .header h1 {
+          font-size: 1.5rem;
+        }
+
+        .nav-tabs {
+          padding: 0.5rem;
+        }
+
+        .nav-tab {
+          padding: 0.5rem 0.75rem;
+          font-size: 0.8rem;
         }
       }
 

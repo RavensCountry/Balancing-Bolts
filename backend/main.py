@@ -310,31 +310,6 @@ async def _configure_on_startup():
         sys.excepthook = _excepthook
     except Exception:
         logger.exception("Error in startup configuration")
-    # ensure 9 property slots exist (create placeholders if none)
-    try:
-        with get_session() as s:
-            props = s.exec(select(type(list_properties()).__args__[0] if hasattr(list_properties(), '__args__') else "property")).all()
-    except Exception:
-        # fallback: use the crud list_properties
-        try:
-            props = list_properties()
-        except Exception:
-            props = []
-    try:
-        # if there are fewer than 9 properties, create placeholders
-        if len(props) < 9:
-            for i in range(1, 10):
-                name = f"Property {i}"
-                # avoid duplicates
-                existing = [p for p in props if getattr(p, 'name', '') == name]
-                if existing:
-                    continue
-                try:
-                    create_property(name=name, address='')
-                except Exception:
-                    pass
-    except Exception:
-        logger.exception('Error seeding default properties')
 
     # Create demo admin account if it doesn't exist
     try:

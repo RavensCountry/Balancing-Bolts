@@ -90,12 +90,34 @@ def create_property(name: str, address: Optional[str] = None, notes: Optional[st
 def delete_property(property_id: int):
     """Delete a property by ID."""
     with get_session() as s:
-        p = s.exec(select(Property).where(Property.id == property_id)).first()
-        if not p:
-            raise ValueError(f"Property {property_id} not found")
-        s.delete(p)
-        s.commit()
-        return p
+        from sqlalchemy import inspect, text
+
+        # Check if notes column exists
+        try:
+            inspector = inspect(s.get_bind())
+            columns = [col['name'] for col in inspector.get_columns('property')]
+            has_notes_column = 'notes' in columns
+        except Exception:
+            has_notes_column = True
+
+        if not has_notes_column:
+            # Use raw SQL to delete
+            result = s.execute(text("DELETE FROM property WHERE id = :prop_id RETURNING id, name, address, organization_id"),
+                             {"prop_id": property_id})
+            row = result.fetchone()
+            s.commit()
+            if not row:
+                raise ValueError(f"Property {property_id} not found")
+            # Return a Property object
+            return Property(id=row[0], name=row[1], address=row[2], organization_id=row[3])
+        else:
+            # Normal ORM delete
+            p = s.exec(select(Property).where(Property.id == property_id)).first()
+            if not p:
+                raise ValueError(f"Property {property_id} not found")
+            s.delete(p)
+            s.commit()
+            return p
 
 def add_inventory(property_id: int, name: str, desc: Optional[str], qty: int, cost: float, assigned_to: Optional[int]=None, invoice_id: Optional[int]=None, product_id: Optional[str]=None) -> InventoryItem:
     with get_session() as s:

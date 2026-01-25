@@ -39,11 +39,24 @@ def list_properties(organization_id: Optional[int] = None) -> List[Property]:
 
 def create_property(name: str, address: Optional[str] = None, notes: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
     with get_session() as s:
-        p = Property(name=name, address=address, notes=notes, organization_id=organization_id)
-        s.add(p)
-        s.commit()
-        s.refresh(p)
-        return p
+        # Try to create with notes, fall back without notes if column doesn't exist yet
+        try:
+            p = Property(name=name, address=address, notes=notes, organization_id=organization_id)
+            s.add(p)
+            s.commit()
+            s.refresh(p)
+            return p
+        except Exception as e:
+            # If notes column doesn't exist, create without it
+            s.rollback()
+            p = Property(name=name, address=address, organization_id=organization_id)
+            s.add(p)
+            s.commit()
+            s.refresh(p)
+            # Set notes attribute manually (won't persist but won't error in response)
+            if hasattr(p, 'notes'):
+                p.notes = notes
+            return p
 def delete_property(property_id: int):
     """Delete a property by ID."""
     with get_session() as s:

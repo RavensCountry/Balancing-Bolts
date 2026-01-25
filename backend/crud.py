@@ -79,14 +79,21 @@ def create_property(name: str, address: Optional[str] = None, notes: Optional[st
         # Create property with or without notes based on column existence
         if has_notes_column:
             p = Property(name=name, address=address, notes=notes, organization_id=organization_id)
+            s.add(p)
+            s.commit()
+            s.refresh(p)
+            return p
         else:
-            logger.warning("Notes column does not exist yet, creating property without notes")
-            p = Property(name=name, address=address, organization_id=organization_id)
-
-        s.add(p)
-        s.commit()
-        s.refresh(p)
-        return p
+            logger.warning("Notes column does not exist yet, creating property without notes using raw SQL")
+            # Use raw SQL to insert and return the property
+            result = s.execute(
+                text("INSERT INTO property (name, address, organization_id) VALUES (:name, :address, :org_id) RETURNING id, name, address, organization_id"),
+                {"name": name, "address": address, "org_id": organization_id}
+            )
+            row = result.fetchone()
+            s.commit()
+            # Return a Property object
+            return Property(id=row[0], name=row[1], address=row[2], organization_id=row[3])
 def delete_property(property_id: int):
     """Delete a property by ID."""
     with get_session() as s:

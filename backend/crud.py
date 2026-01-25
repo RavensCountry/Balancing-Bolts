@@ -36,9 +36,36 @@ def create_user(name: str, email: str, role: str, property_id: Optional[int] = N
 
 def list_properties(organization_id: Optional[int] = None) -> List[Property]:
     with get_session() as s:
-        if organization_id:
-            return s.exec(select(Property).where(Property.organization_id == organization_id)).all()
-        return s.exec(select(Property)).all()
+        from sqlalchemy import inspect, text
+
+        # Check if notes column exists
+        try:
+            inspector = inspect(s.get_bind())
+            columns = [col['name'] for col in inspector.get_columns('property')]
+            has_notes_column = 'notes' in columns
+        except Exception:
+            has_notes_column = True  # Assume it exists if we can't check
+
+        if not has_notes_column:
+            # If notes column doesn't exist, query without it
+            query = text("SELECT id, name, address, organization_id FROM property" +
+                        (" WHERE organization_id = :org_id" if organization_id else ""))
+            if organization_id:
+                result = s.execute(query, {"org_id": organization_id})
+            else:
+                result = s.execute(query)
+
+            # Convert to Property objects manually
+            properties = []
+            for row in result:
+                prop = Property(id=row[0], name=row[1], address=row[2], organization_id=row[3])
+                properties.append(prop)
+            return properties
+        else:
+            # Normal query with notes column
+            if organization_id:
+                return s.exec(select(Property).where(Property.organization_id == organization_id)).all()
+            return s.exec(select(Property)).all()
 
 def create_property(name: str, address: Optional[str] = None, notes: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
     with get_session() as s:

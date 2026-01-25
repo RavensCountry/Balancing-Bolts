@@ -4,6 +4,9 @@ from passlib.context import CryptContext
 from typing import List, Optional
 from sqlmodel import select
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 init_db()
 
@@ -39,24 +42,24 @@ def list_properties(organization_id: Optional[int] = None) -> List[Property]:
 
 def create_property(name: str, address: Optional[str] = None, notes: Optional[str] = None, organization_id: Optional[int] = None) -> Property:
     with get_session() as s:
-        # Try to create with notes, fall back without notes if column doesn't exist yet
-        try:
+        from sqlalchemy import inspect, text
+
+        # Check if notes column exists
+        inspector = inspect(s.get_bind())
+        columns = [col['name'] for col in inspector.get_columns('property')]
+        has_notes_column = 'notes' in columns
+
+        # Create property with or without notes based on column existence
+        if has_notes_column:
             p = Property(name=name, address=address, notes=notes, organization_id=organization_id)
-            s.add(p)
-            s.commit()
-            s.refresh(p)
-            return p
-        except Exception as e:
-            # If notes column doesn't exist, create without it
-            s.rollback()
+        else:
+            logger.warning("Notes column does not exist yet, creating property without notes")
             p = Property(name=name, address=address, organization_id=organization_id)
-            s.add(p)
-            s.commit()
-            s.refresh(p)
-            # Set notes attribute manually (won't persist but won't error in response)
-            if hasattr(p, 'notes'):
-                p.notes = notes
-            return p
+
+        s.add(p)
+        s.commit()
+        s.refresh(p)
+        return p
 def delete_property(property_id: int):
     """Delete a property by ID."""
     with get_session() as s:

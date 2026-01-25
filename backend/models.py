@@ -44,6 +44,7 @@ class UserPropertyAccess(SQLModel, table=True):
 class InventoryItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     property_id: Optional[int] = Field(default=None, foreign_key="property.id")
+    unit_number: Optional[str] = None  # Unit number within the property
     name: str
     description: Optional[str] = None
     quantity: int = 1

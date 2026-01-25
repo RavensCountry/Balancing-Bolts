@@ -1805,13 +1805,22 @@
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div>
-                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Property ID (optional)</label>
-                  <input type="number" id="maint_inv_property" class="form-input" placeholder="Leave blank for general inventory" />
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Property (optional)</label>
+                  <select id="maint_inv_property" class="form-input" onchange="loadUnitsForInventoryForm()">
+                    <option value="">General inventory</option>
+                  </select>
                 </div>
                 <div>
-                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Product/SKU ID (optional)</label>
-                  <input type="text" id="maint_inv_product_id" class="form-input" placeholder="e.g., SKU-12345" />
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Unit (optional)</label>
+                  <select id="maint_inv_unit" class="form-input">
+                    <option value="">Select property first</option>
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Product/SKU ID (optional)</label>
+                <input type="text" id="maint_inv_product_id" class="form-input" placeholder="e.g., SKU-12345" />
               </div>
 
               <div>
@@ -2813,21 +2822,39 @@
       }
 
       // Render properties
-      function renderProperties() {
+      async function renderProperties() {
         const container = document.getElementById('propertiesGrid');
         container.innerHTML = '';
 
-        // Render all existing properties
-        properties.forEach(prop => {
+        // Render all existing properties with unit counts
+        for (const prop of properties) {
           const slot = document.createElement('div');
           slot.className = 'property-slot filled';
+
+          // Fetch unit count for this property
+          let unitCount = 0;
+          try {
+            const res = await fetch(`/api/properties/${prop.id}/units`, { headers: authHeaders() });
+            if (res.ok) {
+              const data = await res.json();
+              unitCount = data.total || 0;
+              // Store units on property object for later use
+              prop.units = data.units || [];
+            }
+          } catch (e) {
+            console.error(`Error fetching units for property ${prop.id}:`, e);
+          }
+
           slot.innerHTML = `
             <div class="property-name">${prop.name}</div>
             <div class="property-address">${prop.address || 'No address'}</div>
+            <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+              🏘️ ${unitCount} ${unitCount === 1 ? 'unit' : 'units'}
+            </div>
             <span class="badge">Property #${prop.id}</span>
           `;
           container.appendChild(slot);
-        });
+        }
 
         // Add "Add Property" card
         const addCard = document.createElement('div');
@@ -4916,6 +4943,7 @@
         // Show selected section
         if (section === 'addInventory') {
           document.getElementById('maintenanceAddInventory').style.display = 'block';
+          populateMaintenancePropertyDropdown();
         } else if (section === 'browseInventory') {
           document.getElementById('maintenanceBrowseInventory').style.display = 'block';
         } else if (section === 'requestQuote') {
@@ -5040,6 +5068,62 @@
         }
       }
 
+      // Load units for inventory form when property is selected
+      async function loadUnitsForInventoryForm() {
+        const propId = document.getElementById('maint_inv_property').value;
+        const unitSelect = document.getElementById('maint_inv_unit');
+
+        // Clear existing units
+        unitSelect.innerHTML = '<option value="">No unit assigned</option>';
+
+        if (!propId) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/properties/${propId}/units`, { headers: authHeaders() });
+          if (res.ok) {
+            const data = await res.json();
+            const units = data.units || [];
+
+            if (units.length === 0) {
+              unitSelect.innerHTML = '<option value="">No units available</option>';
+            } else {
+              units.forEach(unit => {
+                const opt = document.createElement('option');
+                opt.value = unit.unit_number;
+                opt.textContent = `Unit ${unit.unit_number}${unit.unit_type ? ' (' + unit.unit_type + ')' : ''}`;
+                unitSelect.appendChild(opt);
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Error loading units:', e);
+          unitSelect.innerHTML = '<option value="">Error loading units</option>';
+        }
+      }
+
+      // Populate property dropdown in maintenance inventory form
+      async function populateMaintenancePropertyDropdown() {
+        const select = document.getElementById('maint_inv_property');
+        select.innerHTML = '<option value="">General inventory</option>';
+
+        try {
+          const res = await fetch('/api/properties', { headers: authHeaders() });
+          if (res.ok) {
+            const props = await res.json();
+            props.forEach(prop => {
+              const opt = document.createElement('option');
+              opt.value = prop.id;
+              opt.textContent = `${prop.name}${prop.address ? ' - ' + prop.address : ''}`;
+              select.appendChild(opt);
+            });
+          }
+        } catch (e) {
+          console.error('Error loading properties:', e);
+        }
+      }
+
       // Add inventory from maintenance tab
       document.getElementById('maintenanceInventoryForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -5049,6 +5133,7 @@
         const qty = document.getElementById('maint_inv_qty').value;
         const cost = document.getElementById('maint_inv_cost').value;
         const propId = document.getElementById('maint_inv_property').value;
+        const unitNumber = document.getElementById('maint_inv_unit').value;
         const productId = document.getElementById('maint_inv_product_id').value.trim();
         const invoiceId = document.getElementById('maint_inv_invoice_id').value;
         const resultEl = document.getElementById('maintInvResult');
@@ -5061,6 +5146,9 @@
         const fd = new URLSearchParams();
         if (propId) {
           fd.append('property_id', propId);
+        }
+        if (unitNumber) {
+          fd.append('unit_number', unitNumber);
         }
         fd.append('name', name);
         fd.append('description', desc);
@@ -5084,6 +5172,8 @@
             const item = await res.json();
             resultEl.innerHTML = '<div class="alert success">✓ Item added successfully!</div>';
             document.getElementById('maintenanceInventoryForm').reset();
+            // Reset unit dropdown
+            document.getElementById('maint_inv_unit').innerHTML = '<option value="">Select property first</option>';
             setTimeout(() => {
               resultEl.innerHTML = '';
             }, 3000);
@@ -5140,6 +5230,7 @@
                     <th>ID</th>
                     <th>Name</th>
                     <th>Description</th>
+                    <th>Unit</th>
                     <th>Qty</th>
                     <th>Cost</th>
                     <th>Product ID</th>
@@ -5156,6 +5247,7 @@
                   <td>${item.id}</td>
                   <td><strong>${item.name}</strong></td>
                   <td>${item.description || '-'}</td>
+                  <td>${item.unit_number ? '<span class="badge" style="background: var(--primary);">Unit ' + item.unit_number + '</span>' : '-'}</td>
                   <td>${item.quantity}</td>
                   <td>$${parseFloat(item.cost).toFixed(2)}</td>
                   <td><span class="badge" style="background: var(--info); font-family: monospace;">${item.product_id || '-'}</span></td>

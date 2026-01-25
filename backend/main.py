@@ -249,6 +249,8 @@ try:
         'UPDATE "user" SET is_super_admin = TRUE, role = \'admin\' WHERE LOWER(email) = \'balancingbolts@gmail.com\';',  # Grant super admin and admin role to platform owner
         # Add notes column to property table
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS notes TEXT;",
+        # Add unit_number column to inventoryitem table
+        "ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS unit_number VARCHAR(50);",
     ]
 
     with engine.connect() as conn:
@@ -621,6 +623,26 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get('/api/properties/{property_id}/units')
+def get_property_units(property_id: int, user=Depends(auth.get_current_user)):
+    """Get all units for a property"""
+    with get_session() as session:
+        from sqlmodel import text
+
+        # Check if property_unit table exists
+        try:
+            result = session.execute(
+                text("SELECT unit_number, unit_type FROM property_unit WHERE property_id = :prop_id ORDER BY unit_number"),
+                {"prop_id": property_id}
+            )
+            units = [{"unit_number": row[0], "unit_type": row[1]} for row in result]
+            return {"units": units, "total": len(units)}
+        except Exception as e:
+            # Table might not exist yet
+            logger.warning(f"Error fetching units: {e}")
+            return {"units": [], "total": 0}
+
+
 # Auth endpoints
 
 
@@ -770,6 +792,7 @@ def fetch_quote(payload: dict, user=Depends(auth.require_role('manager'))):
 @app.post('/api/inventory')
 async def api_add_inventory(
     property_id: int = Form(None),
+    unit_number: str = Form(None),
     name: str = Form(...),
     description: str = Form(None),
     quantity: int = Form(1),
@@ -781,6 +804,7 @@ async def api_add_inventory(
 ):
     item = add_inventory(
         property_id=int(property_id) if property_id else None,
+        unit_number=unit_number,
         name=name,
         desc=description,
         qty=int(quantity),

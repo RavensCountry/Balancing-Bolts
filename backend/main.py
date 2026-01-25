@@ -251,6 +251,15 @@ try:
         "ALTER TABLE property ADD COLUMN IF NOT EXISTS notes TEXT;",
         # Add unit_number column to inventoryitem table
         "ALTER TABLE inventoryitem ADD COLUMN IF NOT EXISTS unit_number VARCHAR(50);",
+        # Create property_unit table for storing units
+        """CREATE TABLE IF NOT EXISTS property_unit (
+            id SERIAL PRIMARY KEY,
+            property_id INTEGER REFERENCES property(id) ON DELETE CASCADE,
+            unit_number VARCHAR(50) NOT NULL,
+            unit_type VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(property_id, unit_number)
+        );""",
     ]
 
     with engine.connect() as conn:
@@ -564,6 +573,8 @@ class CreatePropertyWithUnitsRequest(BaseModel):
 def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Depends(auth.require_role('admin'))):
     """Create a property with units"""
     try:
+        logger.info(f"Creating property '{request.name}' with {len(request.units)} units")
+
         # Create the property
         property_obj = create_property(
             name=request.name,
@@ -571,43 +582,35 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
             notes=request.notes,
             organization_id=user.organization_id
         )
+        logger.info(f"Property created with ID {property_obj.id}")
 
-        # Create units table if it doesn't exist and store units
+        # Store units
         units_created = 0
         if request.units:
             with get_session() as session:
                 from sqlmodel import text
 
-                # Create units table if it doesn't exist
-                session.exec(text("""
-                    CREATE TABLE IF NOT EXISTS property_unit (
-                        id SERIAL PRIMARY KEY,
-                        property_id INTEGER REFERENCES property(id) ON DELETE CASCADE,
-                        unit_number VARCHAR(50) NOT NULL,
-                        unit_type VARCHAR(50),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(property_id, unit_number)
-                    )
-                """))
-                session.commit()
-
-                # Insert units
+                # Insert units (table should exist from migrations)
                 for unit in request.units:
                     try:
-                        session.exec(text("""
+                        logger.debug(f"Inserting unit {unit['unit_number']} for property {property_obj.id}")
+                        result = session.exec(text("""
                             INSERT INTO property_unit (property_id, unit_number, unit_type)
                             VALUES (:property_id, :unit_number, :unit_type)
                             ON CONFLICT (property_id, unit_number) DO NOTHING
+                            RETURNING id
                         """), {
                             'property_id': property_obj.id,
                             'unit_number': unit['unit_number'],
                             'unit_type': unit.get('unit_type', 'Unknown')
                         })
-                        units_created += 1
+                        if result.fetchone():
+                            units_created += 1
                     except Exception as e:
-                        logger.warning(f"Failed to create unit {unit['unit_number']}: {e}")
+                        logger.error(f"Failed to create unit {unit['unit_number']}: {e}")
 
                 session.commit()
+                logger.info(f"Successfully created {units_created} units for property {property_obj.id}")
 
         return {
             'property': {
@@ -615,11 +618,14 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
                 'name': property_obj.name,
                 'address': property_obj.address
             },
-            'units_created': units_created
+            'units_created': units_created,
+            'total_units_requested': len(request.units)
         }
 
     except Exception as e:
+        import traceback
         logger.error(f"Error creating property with units: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
 
 

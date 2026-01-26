@@ -128,33 +128,114 @@ def delete_property(property_id: int):
 
 def add_inventory(property_id: int, name: str, desc: Optional[str], qty: int, cost: float, assigned_to: Optional[int]=None, invoice_id: Optional[int]=None, product_id: Optional[str]=None, unit_number: Optional[str]=None) -> InventoryItem:
     with get_session() as s:
-        item = InventoryItem(
-            property_id=property_id,
-            unit_number=unit_number,
-            name=name,
-            description=desc,
-            quantity=qty,
-            cost=cost,
-            assigned_to_user_id=assigned_to,
-            invoice_id=invoice_id,
-            product_id=product_id
-        )
-        s.add(item)
-        s.commit()
-        s.refresh(item)
-        return item
+        from sqlalchemy import inspect, text
+
+        # Check if unit_number column exists
+        inspector = inspect(s.get_bind())
+        columns = [col['name'] for col in inspector.get_columns('inventoryitem')]
+        has_unit_number = 'unit_number' in columns
+
+        if has_unit_number:
+            # Normal ORM insert with unit_number
+            item = InventoryItem(
+                property_id=property_id,
+                unit_number=unit_number,
+                name=name,
+                description=desc,
+                quantity=qty,
+                cost=cost,
+                assigned_to_user_id=assigned_to,
+                invoice_id=invoice_id,
+                product_id=product_id
+            )
+            s.add(item)
+            s.commit()
+            s.refresh(item)
+            return item
+        else:
+            # Use raw SQL without unit_number
+            logger.warning("unit_number column does not exist yet, creating inventory without unit_number using raw SQL")
+            result = s.execute(
+                text("""INSERT INTO inventoryitem
+                        (property_id, name, description, quantity, cost, assigned_to_user_id, invoice_id, product_id)
+                        VALUES (:property_id, :name, :description, :quantity, :cost, :assigned_to, :invoice_id, :product_id)
+                        RETURNING id, property_id, name, description, quantity, cost, assigned_to_user_id, invoice_id, product_id"""),
+                {
+                    "property_id": property_id,
+                    "name": name,
+                    "description": desc,
+                    "quantity": qty,
+                    "cost": cost,
+                    "assigned_to": assigned_to,
+                    "invoice_id": invoice_id,
+                    "product_id": product_id
+                }
+            )
+            row = result.fetchone()
+            s.commit()
+            return InventoryItem(
+                id=row[0],
+                property_id=row[1],
+                name=row[2],
+                description=row[3],
+                quantity=row[4],
+                cost=row[5],
+                assigned_to_user_id=row[6],
+                invoice_id=row[7],
+                product_id=row[8]
+            )
 
 
 def list_inventory(page: int = 1, per_page: int = 20, property_id: Optional[int] = None, organization_id: Optional[int] = None):
     """Return (items, total_count) for inventory with optional property and organization filter."""
     with get_session() as s:
-        q = select(InventoryItem)
-        if property_id:
-            q = q.where(InventoryItem.property_id == property_id)
-        elif organization_id:
-            # Filter by properties that belong to the organization
-            q = q.join(Property).where(Property.organization_id == organization_id)
-        all_items = s.exec(q).all()
+        from sqlalchemy import inspect, text
+
+        # Check if unit_number column exists
+        try:
+            inspector = inspect(s.get_bind())
+            columns = [col['name'] for col in inspector.get_columns('inventoryitem')]
+            has_unit_number = 'unit_number' in columns
+        except Exception:
+            has_unit_number = True
+
+        if not has_unit_number:
+            # Use raw SQL without unit_number column
+            query = "SELECT id, property_id, name, description, quantity, cost, assigned_to_user_id, invoice_id, product_id FROM inventoryitem"
+            params = {}
+
+            if property_id:
+                query += " WHERE property_id = :property_id"
+                params['property_id'] = property_id
+            elif organization_id:
+                query += " WHERE property_id IN (SELECT id FROM property WHERE organization_id = :org_id)"
+                params['org_id'] = organization_id
+
+            result = s.execute(text(query), params)
+            all_items = []
+            for row in result:
+                item = InventoryItem(
+                    id=row[0],
+                    property_id=row[1],
+                    name=row[2],
+                    description=row[3],
+                    quantity=row[4],
+                    cost=row[5],
+                    assigned_to_user_id=row[6],
+                    invoice_id=row[7],
+                    product_id=row[8]
+                )
+                all_items.append(item)
+        else:
+            # Normal ORM query with unit_number
+            q = select(InventoryItem)
+            if property_id:
+                q = q.where(InventoryItem.property_id == property_id)
+            elif organization_id:
+                # Filter by properties that belong to the organization
+                q = q.join(Property).where(Property.organization_id == organization_id)
+            all_items = s.exec(q).all()
+
         total = len(all_items)
         # simple in-memory pagination
         start = max(0, (page - 1) * per_page)

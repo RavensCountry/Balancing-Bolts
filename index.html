@@ -2991,14 +2991,23 @@
             const data = await res.json();
             parsedUnits = data.units;
 
-            statusEl.innerHTML = `<span style="color: var(--success);">✅ Successfully parsed ${data.units.length} units!</span>`;
+            console.log('Parsed units data:', data);
+            console.log('Stored parsedUnits:', parsedUnits);
+
+            if (!parsedUnits || parsedUnits.length === 0) {
+              statusEl.innerHTML = `<span style="color: var(--warning);">⚠️ File uploaded but no units found. Check file format.</span>`;
+            } else {
+              statusEl.innerHTML = `<span style="color: var(--success);">✅ Successfully parsed ${data.units.length} units!</span>`;
+            }
 
             // Show preview
-            document.getElementById('unitsPreview').style.display = 'block';
-            const previewContent = document.getElementById('unitsPreviewContent');
-            previewContent.innerHTML = data.units.slice(0, 20).map(u =>
-              `<div style="padding: 0.25rem 0;"><strong>${u.unit_number}</strong> - ${u.unit_type}</div>`
-            ).join('') + (data.units.length > 20 ? `<div style="padding: 0.5rem 0; font-style: italic;">... and ${data.units.length - 20} more</div>` : '');
+            if (parsedUnits && parsedUnits.length > 0) {
+              document.getElementById('unitsPreview').style.display = 'block';
+              const previewContent = document.getElementById('unitsPreviewContent');
+              previewContent.innerHTML = data.units.slice(0, 20).map(u =>
+                `<div style="padding: 0.25rem 0;"><strong>${u.unit_number}</strong> - ${u.unit_type}</div>`
+              ).join('') + (data.units.length > 20 ? `<div style="padding: 0.5rem 0; font-style: italic;">... and ${data.units.length - 20} more</div>` : '');
+            }
 
             // Auto-fill property name if found
             if (data.property_name && !document.getElementById('modalPropName').value) {
@@ -3032,6 +3041,9 @@
           units: parsedUnits || []
         };
 
+        console.log('Creating property with payload:', payload);
+        console.log('parsedUnits at creation time:', parsedUnits);
+
         try {
           const res = await fetch('/api/properties/create-with-units', {
             method: 'POST',
@@ -3044,7 +3056,8 @@
 
           if (res.ok) {
             const result = await res.json();
-            alert(`Property created successfully with ${result.units_created || 0} units!`);
+            console.log('Property creation result:', result);
+            alert(`Property created successfully!\nUnits created: ${result.units_created || 0}\nUnits requested: ${result.total_units_requested || 0}`);
             document.getElementById('addPropertyModal').remove();
             parsedUnits = null;
             await fetchProperties();

@@ -454,8 +454,9 @@ def update_property_notes(property_id: int, request: UpdatePropertyNotesRequest,
 
 @app.post('/api/properties/parse-units')
 async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.require_role('admin'))):
-    """Parse a unit report (PDF or Excel) and extract unit information"""
+    """Parse a unit report (PDF, Excel, or CSV) and extract unit information"""
     try:
+        logger.info(f"Parsing units file: {file.filename}")
         # Read file content
         content = await file.read()
 
@@ -463,9 +464,16 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
         property_name = None
 
         # Check file type
-        if file.filename.endswith(('.xlsx', '.xls')):
-            # Parse Excel file
-            df = pd.read_excel(io.BytesIO(content))
+        if file.filename.endswith(('.xlsx', '.xls', '.csv')):
+            # Parse Excel or CSV file
+            if file.filename.endswith('.csv'):
+                df = pd.read_csv(io.BytesIO(content))
+                logger.info(f"Parsed CSV with {len(df)} rows")
+            else:
+                df = pd.read_excel(io.BytesIO(content))
+                logger.info(f"Parsed Excel with {len(df)} rows")
+
+            logger.info(f"Initial columns: {df.columns.tolist()}")
 
             # Try to find property name in header rows
             for i in range(min(5, len(df))):
@@ -485,38 +493,54 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
                     header_row = i
                     break
 
-            if header_row is not None:
-                # Set the header
-                df.columns = df.iloc[header_row]
-                df = df.iloc[header_row + 1:]
+            # If no header row found, assume first row is header
+            if header_row is None:
+                header_row = 0
+                logger.info("No header row found, using first row")
 
-                # Find unit and unit type columns
-                unit_col = None
-                type_col = None
+            # Set the header
+            df.columns = df.iloc[header_row]
+            df = df.iloc[header_row + 1:]
+            logger.info(f"Using row {header_row} as header. Columns: {df.columns.tolist()}")
 
-                for col in df.columns:
-                    col_lower = str(col).lower().strip()
-                    if col_lower in ['unit', 'unit #', 'unit number', 'unit_number']:
+            # Find unit and unit type columns with more flexible matching
+            unit_col = None
+            type_col = None
+
+            for col in df.columns:
+                col_lower = str(col).lower().strip()
+                # Match unit column
+                if any(term in col_lower for term in ['unit', 'unit #', 'unit number', 'unit_number', 'apt', 'apartment']):
+                    if not any(term in col_lower for term in ['type', 'status', 'tenant', 'name', 'balance']):
                         unit_col = col
-                    elif 'type' in col_lower and 'unit' in col_lower:
-                        type_col = col
+                        logger.info(f"Found unit column: {col}")
+                # Match unit type column
+                if any(term in col_lower for term in ['type', 'bedroom', 'bed', 'br', 'unit type', 'unit_type']):
+                    type_col = col
+                    logger.info(f"Found unit type column: {col}")
 
-                # Extract units
-                if unit_col:
-                    for _, row in df.iterrows():
-                        unit_num = str(row[unit_col]).strip()
-                        unit_type = str(row[type_col]).strip() if type_col and pd.notna(row[type_col]) else 'Unknown'
+            # Extract units
+            if unit_col:
+                logger.info(f"Extracting units from column '{unit_col}'")
+                for idx, row in df.iterrows():
+                    unit_num = str(row[unit_col]).strip()
+                    unit_type = str(row[type_col]).strip() if type_col and pd.notna(row[type_col]) else 'Unknown'
 
-                        # Skip if not a valid unit number
-                        if unit_num and unit_num != 'nan' and unit_num != 'None':
-                            units.append({
-                                'unit_number': unit_num,
-                                'unit_type': unit_type
-                            })
+                    # Skip if not a valid unit number
+                    if unit_num and unit_num != 'nan' and unit_num != 'None' and unit_num != '':
+                        units.append({
+                            'unit_number': unit_num,
+                            'unit_type': unit_type
+                        })
+                logger.info(f"Extracted {len(units)} units")
+            else:
+                logger.warning("Could not find unit column in file")
+                logger.warning(f"Available columns: {df.columns.tolist()}")
 
         elif file.filename.endswith('.pdf'):
             # Parse PDF file
             import PyPDF2
+            logger.info("Parsing PDF file")
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
 
             # Extract text from first page
@@ -547,10 +571,12 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
                     'unit_number': unit_num,
                     'unit_type': unit_type
                 })
+            logger.info(f"Extracted {len(units)} units from PDF")
 
         else:
-            raise HTTPException(status_code=400, detail="File must be PDF or Excel (.xlsx, .xls)")
+            raise HTTPException(status_code=400, detail="File must be PDF, Excel (.xlsx, .xls), or CSV (.csv)")
 
+        logger.info(f"Successfully parsed file. Property: {property_name}, Units: {len(units)}")
         return {
             'units': units,
             'property_name': property_name,
@@ -558,7 +584,9 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
         }
 
     except Exception as e:
+        import traceback
         logger.error(f"Error parsing units file: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")
 
 

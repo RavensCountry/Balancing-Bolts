@@ -2948,7 +2948,7 @@
 
               <div style="display: flex; gap: 1rem; justify-content: flex-end;">
                 <button class="btn-secondary" onclick="document.getElementById('addPropertyModal').remove()">Cancel</button>
-                <button class="btn-primary" onclick="createPropertyFromModal()">Create Property</button>
+                <button id="createPropertyBtn" class="btn-primary" onclick="createPropertyFromModal()">Create Property</button>
               </div>
             </div>
           </div>
@@ -2975,6 +2975,16 @@
         if (!file) return;
 
         const statusEl = document.getElementById('fileUploadStatus');
+        const createBtn = document.getElementById('createPropertyBtn');
+
+        // Disable create button while uploading
+        if (createBtn) {
+          createBtn.disabled = true;
+          createBtn.style.opacity = '0.5';
+          createBtn.style.cursor = 'not-allowed';
+          createBtn.textContent = 'Parsing File...';
+        }
+
         statusEl.innerHTML = '<span style="color: var(--primary);">📤 Uploading and parsing file...</span>';
 
         const formData = new FormData();
@@ -3022,6 +3032,14 @@
         } catch (e) {
           statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${e.message}</span>`;
           parsedUnits = null;
+        } finally {
+          // Re-enable create button
+          if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.style.opacity = '1';
+            createBtn.style.cursor = 'pointer';
+            createBtn.textContent = 'Create Property';
+          }
         }
       }
 

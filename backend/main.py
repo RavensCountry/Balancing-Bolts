@@ -509,33 +509,55 @@ async def parse_units_file(file: UploadFile = File(...), user=Depends(auth.requi
 
             for col in df.columns:
                 col_lower = str(col).lower().strip()
-                # Match unit column
-                if any(term in col_lower for term in ['unit', 'unit #', 'unit number', 'unit_number', 'apt', 'apartment']):
-                    if not any(term in col_lower for term in ['type', 'status', 'tenant', 'name', 'balance']):
+                # Match unit column - prioritize exact matches first
+                if not unit_col:
+                    if col_lower in ['unit', 'unit #', 'unit number', 'unit_number', 'apt', 'apartment', 'unit#']:
                         unit_col = col
-                        logger.info(f"Found unit column: {col}")
+                        logger.info(f"Found unit column (exact): {col}")
+                    elif 'unit' in col_lower and not any(term in col_lower for term in ['type', 'status', 'tenant', 'name', 'balance', 'square']):
+                        unit_col = col
+                        logger.info(f"Found unit column (partial): {col}")
+
                 # Match unit type column
-                if any(term in col_lower for term in ['type', 'bedroom', 'bed', 'br', 'unit type', 'unit_type']):
-                    type_col = col
-                    logger.info(f"Found unit type column: {col}")
+                if not type_col:
+                    if any(term in col_lower for term in ['type', 'bedroom', 'bed', 'br', 'unit type', 'unit_type', 'floorplan', 'floor plan']):
+                        type_col = col
+                        logger.info(f"Found unit type column: {col}")
+
+            # If still no unit column found, try the first column that looks like unit numbers
+            if not unit_col:
+                logger.warning("No unit column found by name, trying first column")
+                for col in df.columns:
+                    # Check if this column has values that look like unit numbers
+                    sample_values = df[col].dropna().head(5).astype(str).tolist()
+                    if sample_values and any(val.strip() and (val.isdigit() or val.replace('-', '').replace(' ', '').isdigit()) for val in sample_values):
+                        unit_col = col
+                        logger.info(f"Using column '{col}' as unit column (looks like unit numbers)")
+                        break
 
             # Extract units
             if unit_col:
                 logger.info(f"Extracting units from column '{unit_col}'")
                 for idx, row in df.iterrows():
-                    unit_num = str(row[unit_col]).strip()
-                    unit_type = str(row[type_col]).strip() if type_col and pd.notna(row[type_col]) else 'Unknown'
+                    try:
+                        unit_num = str(row[unit_col]).strip()
+                        unit_type = str(row[type_col]).strip() if type_col and pd.notna(row[type_col]) else 'Unknown'
 
-                    # Skip if not a valid unit number
-                    if unit_num and unit_num != 'nan' and unit_num != 'None' and unit_num != '':
-                        units.append({
-                            'unit_number': unit_num,
-                            'unit_type': unit_type
-                        })
+                        # Skip if not a valid unit number
+                        if unit_num and unit_num != 'nan' and unit_num != 'None' and unit_num != '':
+                            units.append({
+                                'unit_number': unit_num,
+                                'unit_type': unit_type
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error processing row {idx}: {e}")
+                        continue
                 logger.info(f"Extracted {len(units)} units")
             else:
                 logger.warning("Could not find unit column in file")
                 logger.warning(f"Available columns: {df.columns.tolist()}")
+                # Show sample of first few rows to help debug
+                logger.warning(f"First row data: {df.head(1).to_dict()}")
 
         elif file.filename.endswith('.pdf'):
             # Parse PDF file

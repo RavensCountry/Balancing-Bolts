@@ -2931,11 +2931,11 @@
               </div>
 
               <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Upload Unit Report (PDF or Excel)</label>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Upload Unit Report (PDF, Excel, or CSV)</label>
                 <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
                   Upload a unit report to automatically import all unit numbers and types.
                 </p>
-                <input type="file" id="modalUnitFile" accept=".pdf,.xlsx,.xls"
+                <input type="file" id="modalUnitFile" accept=".pdf,.xlsx,.xls,.csv"
                        onchange="handleUnitFileUpload(this.files[0])"
                        style="width: 100%; padding: 0.75rem; border: 2px dashed var(--card-border); border-radius: 6px; cursor: pointer;">
                 <div id="fileUploadStatus" style="margin-top: 0.75rem; font-size: 0.875rem;"></div>
@@ -3035,6 +3035,13 @@
           return;
         }
 
+        // Check if units were uploaded
+        const fileInput = document.getElementById('modalUnitFile');
+        if (fileInput && fileInput.files.length > 0 && (!parsedUnits || parsedUnits.length === 0)) {
+          alert('Please wait for the unit file to finish uploading and parsing before creating the property.');
+          return;
+        }
+
         const payload = {
           name: name,
           address: address || null,
@@ -3043,6 +3050,7 @@
 
         console.log('Creating property with payload:', payload);
         console.log('parsedUnits at creation time:', parsedUnits);
+        console.log('Payload units length:', payload.units.length);
 
         try {
           const res = await fetch('/api/properties/create-with-units', {

@@ -3024,16 +3024,32 @@
               document.getElementById('modalPropName').value = data.property_name;
               updateModalHeader(data.property_name);
             }
+
+            // Re-enable create button ONLY after units are set
+            if (createBtn) {
+              createBtn.disabled = false;
+              createBtn.style.opacity = '1';
+              createBtn.style.cursor = 'pointer';
+              createBtn.textContent = 'Create Property';
+            }
           } else {
             const error = await res.json();
             statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${error.detail || 'Failed to parse file'}</span>`;
             parsedUnits = null;
+
+            // Re-enable button on error
+            if (createBtn) {
+              createBtn.disabled = false;
+              createBtn.style.opacity = '1';
+              createBtn.style.cursor = 'pointer';
+              createBtn.textContent = 'Create Property';
+            }
           }
         } catch (e) {
           statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${e.message}</span>`;
           parsedUnits = null;
-        } finally {
-          // Re-enable create button
+
+          // Re-enable button on exception
           if (createBtn) {
             createBtn.disabled = false;
             createBtn.style.opacity = '1';

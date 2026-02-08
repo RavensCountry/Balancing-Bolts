@@ -3030,7 +3030,12 @@
               createBtn.disabled = false;
               createBtn.style.opacity = '1';
               createBtn.style.cursor = 'pointer';
-              createBtn.textContent = 'Create Property';
+              if (parsedUnits && parsedUnits.length > 0) {
+                createBtn.textContent = `Create with ${parsedUnits.length} Units`;
+                createBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+              } else {
+                createBtn.textContent = 'Create Property';
+              }
             }
           } else {
             const error = await res.json();
@@ -3063,6 +3068,8 @@
       async function createPropertyFromModal() {
         const name = document.getElementById('modalPropName').value.trim();
         const address = document.getElementById('modalPropAddress').value.trim();
+        const createBtn = document.getElementById('createPropertyBtn');
+        const statusEl = document.getElementById('fileUploadStatus');
 
         if (!name) {
           alert('Please enter a property name');
@@ -3086,6 +3093,17 @@
         console.log('parsedUnits at creation time:', parsedUnits);
         console.log('Payload units length:', payload.units.length);
 
+        // Disable button and show creating status
+        if (createBtn) {
+          createBtn.disabled = true;
+          createBtn.style.opacity = '0.5';
+          createBtn.textContent = 'Creating...';
+        }
+
+        if (statusEl && payload.units.length > 0) {
+          statusEl.innerHTML = `<span style="color: var(--primary);">🏗️ Creating property with ${payload.units.length} units...</span>`;
+        }
+
         try {
           const res = await fetch('/api/properties/create-with-units', {
             method: 'POST',
@@ -3099,17 +3117,61 @@
           if (res.ok) {
             const result = await res.json();
             console.log('Property creation result:', result);
-            alert(`Property created successfully!\nUnits created: ${result.units_created || 0}\nUnits requested: ${result.total_units_requested || 0}`);
+
+            // Show success message
+            const unitsCreated = result.units_created || 0;
+            const unitsRequested = result.total_units_requested || 0;
+
+            if (statusEl) {
+              if (unitsCreated === unitsRequested && unitsCreated > 0) {
+                statusEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">✅ Success! Property created with all ${unitsCreated} units!</span>`;
+              } else if (unitsCreated > 0) {
+                statusEl.innerHTML = `<span style="color: var(--warning); font-weight: 600;">⚠️ Property created with ${unitsCreated} of ${unitsRequested} units</span>`;
+              } else {
+                statusEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">✅ Property created successfully!</span>`;
+              }
+            }
+
+            // Show detailed alert
+            if (unitsRequested > 0) {
+              alert(`✅ Property "${result.property.name}" created successfully!\n\n📊 Units: ${unitsCreated} of ${unitsRequested} created\n🏠 Property ID: ${result.property.id}`);
+            } else {
+              alert(`✅ Property "${result.property.name}" created successfully!\n\n🏠 Property ID: ${result.property.id}`);
+            }
+
+            // Wait a moment before closing modal so user can see success message
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
             document.getElementById('addPropertyModal').remove();
             parsedUnits = null;
             await fetchProperties();
             renderProperties();
           } else {
             const error = await res.json();
-            alert(error.detail || 'Error creating property');
+            if (statusEl) {
+              statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${error.detail || 'Failed to create property'}</span>`;
+            }
+            alert(`Error creating property: ${error.detail || 'Unknown error'}`);
+
+            // Re-enable button on error
+            if (createBtn) {
+              createBtn.disabled = false;
+              createBtn.style.opacity = '1';
+              createBtn.textContent = parsedUnits && parsedUnits.length > 0 ? `Create with ${parsedUnits.length} Units` : 'Create Property';
+            }
           }
         } catch (e) {
+          if (statusEl) {
+            statusEl.innerHTML = `<span style="color: var(--error);">❌ Error: ${e.message}</span>`;
+          }
           alert('Error: ' + e.message);
+
+          // Re-enable button on exception
+          if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.style.opacity = '1';
+            createBtn.textContent = parsedUnits && parsedUnits.length > 0 ? `Create with ${parsedUnits.length} Units` : 'Create Property';
+          }
         }
       }
 

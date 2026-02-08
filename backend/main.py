@@ -641,13 +641,36 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
             with get_session() as session:
                 from sqlmodel import text
 
+                # Check if property_unit table exists
+                try:
+                    check_result = session.execute(text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'property_unit')"))
+                    table_exists = check_result.fetchone()[0]
+                    logger.info(f"property_unit table exists: {table_exists}")
+
+                    if not table_exists:
+                        logger.error("property_unit table does not exist! Creating it now...")
+                        session.execute(text("""
+                            CREATE TABLE property_unit (
+                                id SERIAL PRIMARY KEY,
+                                property_id INTEGER REFERENCES property(id) ON DELETE CASCADE,
+                                unit_number VARCHAR(50) NOT NULL,
+                                unit_type VARCHAR(50),
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                UNIQUE(property_id, unit_number)
+                            )
+                        """))
+                        session.commit()
+                        logger.info("property_unit table created successfully")
+                except Exception as e:
+                    logger.error(f"Error checking/creating property_unit table: {e}")
+
                 # Insert units (table should exist from migrations)
                 for idx, unit in enumerate(request.units):
                     try:
                         if idx < 5:  # Log first 5 units for debugging
                             logger.info(f"Inserting unit {unit.get('unit_number')} (type: {unit.get('unit_type')}) for property {property_obj.id}")
 
-                        result = session.exec(text("""
+                        result = session.execute(text("""
                             INSERT INTO property_unit (property_id, unit_number, unit_type)
                             VALUES (:property_id, :unit_number, :unit_type)
                             ON CONFLICT (property_id, unit_number) DO NOTHING

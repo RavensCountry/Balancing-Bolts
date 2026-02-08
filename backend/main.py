@@ -637,13 +637,16 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
         # Store units
         units_created = 0
         if request.units:
+            logger.info(f"Starting to insert {len(request.units)} units")
             with get_session() as session:
                 from sqlmodel import text
 
                 # Insert units (table should exist from migrations)
-                for unit in request.units:
+                for idx, unit in enumerate(request.units):
                     try:
-                        logger.debug(f"Inserting unit {unit['unit_number']} for property {property_obj.id}")
+                        if idx < 5:  # Log first 5 units for debugging
+                            logger.info(f"Inserting unit {unit.get('unit_number')} (type: {unit.get('unit_type')}) for property {property_obj.id}")
+
                         result = session.exec(text("""
                             INSERT INTO property_unit (property_id, unit_number, unit_type)
                             VALUES (:property_id, :unit_number, :unit_type)
@@ -651,16 +654,20 @@ def create_property_with_units(request: CreatePropertyWithUnitsRequest, user=Dep
                             RETURNING id
                         """), {
                             'property_id': property_obj.id,
-                            'unit_number': unit['unit_number'],
+                            'unit_number': unit.get('unit_number'),
                             'unit_type': unit.get('unit_type', 'Unknown')
                         })
                         if result.fetchone():
                             units_created += 1
                     except Exception as e:
-                        logger.error(f"Failed to create unit {unit['unit_number']}: {e}")
+                        logger.error(f"Failed to create unit {unit.get('unit_number', 'UNKNOWN')}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
 
                 session.commit()
                 logger.info(f"Successfully created {units_created} units for property {property_obj.id}")
+        else:
+            logger.warning("No units to insert - request.units is empty or None")
 
         return {
             'property': {

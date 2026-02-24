@@ -1968,23 +1968,29 @@
         <div id="reportsPage" class="page">
           <div class="card">
             <h3>📈 Monthly Report</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">View spending summary for a specific month</p>
             <div class="input-group">
               <input id="r_month_year" type="number" placeholder="Year (e.g., 2026)" />
               <input id="r_month" type="number" placeholder="Month (1-12)" min="1" max="12" />
               <input id="r_month_prop" type="number" placeholder="Property ID (optional)" />
             </div>
             <button class="btn-primary" onclick="getMonthlyReport()" style="width: 100%;">Generate Monthly Report</button>
-            <pre id="monthlyResult" class="mt-2" style="background: var(--primary-light); padding: 1rem; border-radius: 8px; overflow: auto; max-height: 300px;"></pre>
+            <div id="monthlyResult" class="mt-2" style="background: var(--card-bg); padding: 1.5rem; border-radius: 8px; overflow: auto; max-height: 600px; display: none;">
+              <!-- Monthly report will be rendered here -->
+            </div>
           </div>
 
           <div class="card">
             <h3>📊 Yearly Report</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">View annual spending summary</p>
             <div class="input-group">
               <input id="r_yearly_year" type="number" placeholder="Year (e.g., 2026)" />
               <input id="r_yearly_prop" type="number" placeholder="Property ID (optional)" />
             </div>
             <button class="btn-primary" onclick="getYearlyReport()" style="width: 100%;">Generate Yearly Report</button>
-            <pre id="yearlyResult" class="mt-2" style="background: var(--primary-light); padding: 1rem; border-radius: 8px; overflow: auto; max-height: 300px;"></pre>
+            <div id="yearlyResult" class="mt-2" style="background: var(--card-bg); padding: 1.5rem; border-radius: 8px; overflow: auto; max-height: 600px; display: none;">
+              <!-- Yearly report will be rendered here -->
+            </div>
           </div>
 
           <div class="card">
@@ -3514,7 +3520,8 @@
         const resultEl = document.getElementById('monthlyResult');
 
         if (!year || !month) {
-          resultEl.textContent = 'Please enter year and month';
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = '<p style="color: var(--error);">Please enter year and month</p>';
           return;
         }
 
@@ -3523,12 +3530,78 @@
         params.set('month', month);
         if (propId) params.set('property_id', propId);
 
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<p style="color: var(--text-secondary);">Loading monthly report...</p>';
+
         try {
           const res = await fetch('/api/reports/monthly?' + params.toString(), { headers: authHeaders() });
+
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to generate report');
+          }
+
           const data = await res.json();
-          resultEl.textContent = JSON.stringify(data, null, 2);
+
+          // Format the monthly report
+          let html = `
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--primary);">${data.month_name} ${data.year} Report</h4>
+              <p style="color: var(--text-secondary); margin: 0;">${new Date(data.start_date).toLocaleDateString()} - ${new Date(data.end_date).toLocaleDateString()}</p>
+            </div>
+
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="background: var(--primary-light); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Spending</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">$${data.total_spend.toFixed(2)}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Invoices</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.total_invoices}</div>
+              </div>
+            </div>
+
+            <!-- Spending by Property -->
+            <div style="margin-bottom: 1.5rem;">
+              <h5 style="margin: 0 0 1rem 0;">💰 Spending by Property</h5>
+              ${Object.keys(data.spending_by_property).length > 0 ? `
+                <div style="background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden;">
+                  ${Object.entries(data.spending_by_property).map(([propName, amount]) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <span style="font-weight: 600;">${propName}</span>
+                      <span style="color: var(--primary); font-weight: 700;">$${amount.toFixed(2)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No spending recorded for this month</p>'}
+            </div>
+
+            <!-- Invoices -->
+            <div>
+              <h5 style="margin: 0 0 1rem 0;">📄 Invoices</h5>
+              ${data.invoices.length > 0 ? `
+                <div style="max-height: 300px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  ${data.invoices.map(inv => `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                        <div>
+                          <div style="font-weight: 600;">${inv.vendor}</div>
+                          <div style="font-size: 0.875rem; color: var(--text-secondary);">${inv.date ? new Date(inv.date).toLocaleDateString() : 'No date'}</div>
+                        </div>
+                        <div style="font-weight: 700; color: var(--primary);">$${inv.total.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No invoices recorded for this month</p>'}
+            </div>
+          `;
+
+          resultEl.innerHTML = html;
         } catch (e) {
-          resultEl.textContent = 'Error: ' + e.message;
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `<p style="color: var(--error);">Error: ${e.message}</p>`;
         }
       }
 
@@ -3538,7 +3611,8 @@
         const resultEl = document.getElementById('yearlyResult');
 
         if (!year) {
-          resultEl.textContent = 'Please enter year';
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = '<p style="color: var(--error);">Please enter year</p>';
           return;
         }
 
@@ -3546,12 +3620,104 @@
         params.set('year', year);
         if (propId) params.set('property_id', propId);
 
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<p style="color: var(--text-secondary);">Loading yearly report...</p>';
+
         try {
           const res = await fetch('/api/reports/yearly?' + params.toString(), { headers: authHeaders() });
+
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to generate report');
+          }
+
           const data = await res.json();
-          resultEl.textContent = JSON.stringify(data, null, 2);
+
+          // Format the yearly report
+          let html = `
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--primary);">${data.year} Annual Report</h4>
+              <p style="color: var(--text-secondary); margin: 0;">${new Date(data.start_date).toLocaleDateString()} - ${new Date(data.end_date).toLocaleDateString()}</p>
+            </div>
+
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="background: var(--primary-light); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Spending</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">$${data.total_spend.toFixed(2)}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Invoices</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.total_invoices}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Avg. Monthly</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">$${(data.total_spend / 12).toFixed(2)}</div>
+              </div>
+            </div>
+
+            <!-- Monthly Trend -->
+            <div style="margin-bottom: 1.5rem;">
+              <h5 style="margin: 0 0 1rem 0;">📊 Monthly Spending Trend</h5>
+              <div style="background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem;">
+                ${Object.entries(data.spending_by_month).map(([month, amount]) => {
+                  const maxSpend = Math.max(...Object.values(data.spending_by_month), 1);
+                  const percentage = (amount / maxSpend) * 100;
+                  return `
+                    <div style="margin-bottom: 0.75rem;">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                        <span style="font-size: 0.875rem; font-weight: 600;">${month}</span>
+                        <span style="font-size: 0.875rem; color: var(--primary); font-weight: 600;">$${amount.toFixed(2)}</span>
+                      </div>
+                      <div style="background: var(--bg-gradient-start); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: var(--primary); height: 100%; width: ${percentage}%; transition: width 0.3s;"></div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- Spending by Property -->
+            <div style="margin-bottom: 1.5rem;">
+              <h5 style="margin: 0 0 1rem 0;">💰 Spending by Property</h5>
+              ${Object.keys(data.spending_by_property).length > 0 ? `
+                <div style="background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden;">
+                  ${Object.entries(data.spending_by_property).map(([propName, amount]) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <span style="font-weight: 600;">${propName}</span>
+                      <span style="color: var(--primary); font-weight: 700;">$${amount.toFixed(2)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No spending recorded for this year</p>'}
+            </div>
+
+            <!-- Invoices -->
+            <div>
+              <h5 style="margin: 0 0 1rem 0;">📄 All Invoices (${data.total_invoices})</h5>
+              ${data.invoices.length > 0 ? `
+                <div style="max-height: 300px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  ${data.invoices.map(inv => `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                        <div>
+                          <div style="font-weight: 600;">${inv.vendor}</div>
+                          <div style="font-size: 0.875rem; color: var(--text-secondary);">${inv.date ? new Date(inv.date).toLocaleDateString() : 'No date'}</div>
+                        </div>
+                        <div style="font-weight: 700; color: var(--primary);">$${inv.total.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No invoices recorded for this year</p>'}
+            </div>
+          `;
+
+          resultEl.innerHTML = html;
         } catch (e) {
-          resultEl.textContent = 'Error: ' + e.message;
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `<p style="color: var(--error);">Error: ${e.message}</p>`;
         }
       }
 

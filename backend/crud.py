@@ -260,6 +260,7 @@ def log_activity(user_id: Optional[int], action: str, details: Optional[str]=Non
         return a
 
 def monthly_spend(property_id: Optional[int], year: int, month: int) -> float:
+    """Legacy function - returns only total spend. Use monthly_report() for detailed data."""
     from datetime import datetime, timedelta
     with get_session() as s:
         q = select(Invoice)
@@ -273,7 +274,72 @@ def monthly_spend(property_id: Optional[int], year: int, month: int) -> float:
         invs = s.exec(q).all()
         return sum(i.total for i in invs)
 
+def monthly_report(property_id: Optional[int], organization_id: Optional[int], year: int, month: int) -> dict:
+    """Generate a detailed monthly report with spending breakdown and invoices."""
+    from datetime import datetime
+
+    # Calculate month date range
+    start_date = datetime(year, month, 1)
+    next_month = month % 12 + 1
+    end_year = year + (1 if next_month == 1 else 0)
+    end_date = datetime(end_year, next_month, 1)
+
+    with get_session() as s:
+        # Build invoice query
+        invoice_query = select(Invoice).where(
+            Invoice.date >= start_date,
+            Invoice.date < end_date
+        )
+
+        # Apply property or organization filter
+        if property_id:
+            invoice_query = invoice_query.where(Invoice.property_id == property_id)
+        elif organization_id:
+            invoice_query = invoice_query.join(Property).where(Property.organization_id == organization_id)
+
+        # Get invoices
+        invoices = s.exec(invoice_query).all()
+
+        # Calculate totals
+        total_spend = sum(inv.total for inv in invoices)
+
+        # Group spending by property
+        spending_by_property = {}
+        for inv in invoices:
+            prop = s.exec(select(Property).where(Property.id == inv.property_id)).first()
+            if prop:
+                prop_name = prop.name
+                if prop_name not in spending_by_property:
+                    spending_by_property[prop_name] = 0
+                spending_by_property[prop_name] += inv.total
+
+        # Month name
+        month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
+
+        return {
+            'year': year,
+            'month': month,
+            'month_name': month_names[month],
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_spend': total_spend,
+            'spending_by_property': spending_by_property,
+            'invoices': [
+                {
+                    'id': inv.id,
+                    'vendor': inv.vendor,
+                    'date': inv.date.isoformat() if inv.date else None,
+                    'total': inv.total,
+                    'property_id': inv.property_id
+                }
+                for inv in invoices
+            ],
+            'total_invoices': len(invoices)
+        }
+
 def yearly_spend(property_id: Optional[int], year: int) -> float:
+    """Legacy function - returns only total spend. Use yearly_report() for detailed data."""
     from datetime import datetime
     with get_session() as s:
         q = select(Invoice)
@@ -283,6 +349,74 @@ def yearly_spend(property_id: Optional[int], year: int) -> float:
         q = q.where(Invoice.date < datetime(year+1, 1, 1))
         invs = s.exec(q).all()
         return sum(i.total for i in invs)
+
+def yearly_report(property_id: Optional[int], organization_id: Optional[int], year: int) -> dict:
+    """Generate a detailed yearly report with spending breakdown and monthly trends."""
+    from datetime import datetime
+
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year + 1, 1, 1)
+
+    with get_session() as s:
+        # Build invoice query
+        invoice_query = select(Invoice).where(
+            Invoice.date >= start_date,
+            Invoice.date < end_date
+        )
+
+        # Apply property or organization filter
+        if property_id:
+            invoice_query = invoice_query.where(Invoice.property_id == property_id)
+        elif organization_id:
+            invoice_query = invoice_query.join(Property).where(Property.organization_id == organization_id)
+
+        # Get invoices
+        invoices = s.exec(invoice_query).all()
+
+        # Calculate totals
+        total_spend = sum(inv.total for inv in invoices)
+
+        # Group spending by property
+        spending_by_property = {}
+        for inv in invoices:
+            prop = s.exec(select(Property).where(Property.id == inv.property_id)).first()
+            if prop:
+                prop_name = prop.name
+                if prop_name not in spending_by_property:
+                    spending_by_property[prop_name] = 0
+                spending_by_property[prop_name] += inv.total
+
+        # Group spending by month
+        spending_by_month = {}
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        for i in range(1, 13):
+            spending_by_month[month_names[i-1]] = 0
+
+        for inv in invoices:
+            if inv.date:
+                month_name = month_names[inv.date.month - 1]
+                spending_by_month[month_name] += inv.total
+
+        return {
+            'year': year,
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_spend': total_spend,
+            'spending_by_property': spending_by_property,
+            'spending_by_month': spending_by_month,
+            'invoices': [
+                {
+                    'id': inv.id,
+                    'vendor': inv.vendor,
+                    'date': inv.date.isoformat() if inv.date else None,
+                    'total': inv.total,
+                    'property_id': inv.property_id
+                }
+                for inv in invoices
+            ],
+            'total_invoices': len(invoices)
+        }
 
 def quarterly_report(property_id: Optional[int], organization_id: Optional[int], year: int, quarter: int) -> dict:
     """Generate a quarterly report for a property or organization.

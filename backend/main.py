@@ -811,22 +811,80 @@ async def ai_query(payload: dict):
 # Report endpoints
 @app.get('/api/reports/monthly')
 def report_monthly(year: int, month: int, property_id: int = None, user=Depends(auth.get_current_user)):
-    from .crud import monthly_spend
+    """Get detailed monthly report with spending breakdown and invoices.
+
+    Accessible by admins and property managers.
+    Property managers can only view reports for properties they manage.
+    """
+    from .crud import monthly_report, user_can_access_property
+
+    # Validate month
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+
+    # Check permissions
+    organization_id = None
+    if user.role == 'admin' or user.is_super_admin:
+        # Admins can see all properties in their organization
+        organization_id = user.organization_id
+    elif user.role == 'property_manager':
+        # Property managers can only see specific properties they manage
+        if property_id:
+            # Check if they have access to this property
+            if not user_can_access_property(user.id, property_id, 'view'):
+                raise HTTPException(status_code=403, detail="You don't have access to this property")
+        else:
+            # If no property specified, use their organization
+            organization_id = user.organization_id
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient privileges to view reports")
+
     try:
-        total = monthly_spend(property_id, int(year), int(month))
+        report = monthly_report(property_id, organization_id, int(year), int(month))
     except Exception as e:
+        logger.error(f"Error generating monthly report: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
-    return {"year": int(year), "month": int(month), "property_id": property_id, "total": total}
+
+    return report
 
 
 @app.get('/api/reports/yearly')
 def report_yearly(year: int, property_id: int = None, user=Depends(auth.get_current_user)):
-    from .crud import yearly_spend
+    """Get detailed yearly report with spending breakdown and monthly trends.
+
+    Accessible by admins and property managers.
+    Property managers can only view reports for properties they manage.
+    """
+    from .crud import yearly_report, user_can_access_property
+
+    # Check permissions
+    organization_id = None
+    if user.role == 'admin' or user.is_super_admin:
+        # Admins can see all properties in their organization
+        organization_id = user.organization_id
+    elif user.role == 'property_manager':
+        # Property managers can only see specific properties they manage
+        if property_id:
+            # Check if they have access to this property
+            if not user_can_access_property(user.id, property_id, 'view'):
+                raise HTTPException(status_code=403, detail="You don't have access to this property")
+        else:
+            # If no property specified, use their organization
+            organization_id = user.organization_id
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient privileges to view reports")
+
     try:
-        total = yearly_spend(property_id, int(year))
+        report = yearly_report(property_id, organization_id, int(year))
     except Exception as e:
+        logger.error(f"Error generating yearly report: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
-    return {"year": int(year), "property_id": property_id, "total": total}
+
+    return report
 
 
 @app.get('/api/reports/quarterly')

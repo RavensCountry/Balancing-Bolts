@@ -284,6 +284,125 @@ def yearly_spend(property_id: Optional[int], year: int) -> float:
         invs = s.exec(q).all()
         return sum(i.total for i in invs)
 
+def quarterly_report(property_id: Optional[int], organization_id: Optional[int], year: int, quarter: int) -> dict:
+    """Generate a quarterly report for a property or organization.
+
+    Args:
+        property_id: Optional property ID to filter by
+        organization_id: Optional organization ID to filter by
+        year: Year for the report
+        quarter: Quarter number (1-4)
+
+    Returns:
+        Dictionary containing spending, invoices, and inventory data for the quarter
+    """
+    from datetime import datetime
+
+    # Calculate quarter date range
+    start_month = (quarter - 1) * 3 + 1
+    end_month = start_month + 3
+    start_date = datetime(year, start_month, 1)
+
+    if end_month > 12:
+        end_date = datetime(year + 1, end_month - 12, 1)
+    else:
+        end_date = datetime(year, end_month, 1)
+
+    with get_session() as s:
+        # Build invoice query
+        invoice_query = select(Invoice).where(
+            Invoice.date >= start_date,
+            Invoice.date < end_date
+        )
+
+        # Build inventory query
+        inventory_query = select(InventoryItem).where(
+            InventoryItem.id.isnot(None)  # Base query
+        )
+
+        # Apply property or organization filter
+        if property_id:
+            invoice_query = invoice_query.where(Invoice.property_id == property_id)
+            inventory_query = inventory_query.where(InventoryItem.property_id == property_id)
+        elif organization_id:
+            # Filter by properties in the organization
+            invoice_query = invoice_query.join(Property).where(Property.organization_id == organization_id)
+            inventory_query = inventory_query.join(Property).where(Property.organization_id == organization_id)
+
+        # Get invoices
+        invoices = s.exec(invoice_query).all()
+
+        # Get inventory items (those created in this quarter)
+        # Note: We'll filter by a created_at field if it exists, otherwise return all
+        from sqlalchemy import inspect, text
+        try:
+            inspector = inspect(s.get_bind())
+            columns = [col['name'] for col in inspector.get_columns('inventoryitem')]
+            has_created_at = 'created_at' in columns
+        except Exception:
+            has_created_at = False
+
+        if has_created_at:
+            inventory_items = s.exec(
+                inventory_query.where(
+                    InventoryItem.created_at >= start_date,
+                    InventoryItem.created_at < end_date
+                )
+            ).all()
+        else:
+            # If no created_at, just get all inventory for the property/org
+            inventory_items = s.exec(inventory_query).all()
+
+        # Calculate totals
+        total_spend = sum(inv.total for inv in invoices)
+
+        # Group spending by property
+        spending_by_property = {}
+        for inv in invoices:
+            prop = s.exec(select(Property).where(Property.id == inv.property_id)).first()
+            if prop:
+                prop_name = prop.name
+                if prop_name not in spending_by_property:
+                    spending_by_property[prop_name] = 0
+                spending_by_property[prop_name] += inv.total
+
+        # Group inventory by property
+        inventory_by_property = {}
+        for item in inventory_items:
+            prop = s.exec(select(Property).where(Property.id == item.property_id)).first()
+            if prop:
+                prop_name = prop.name
+                if prop_name not in inventory_by_property:
+                    inventory_by_property[prop_name] = []
+                inventory_by_property[prop_name].append({
+                    'name': item.name,
+                    'quantity': item.quantity,
+                    'cost': item.cost,
+                    'unit_number': item.unit_number
+                })
+
+        return {
+            'year': year,
+            'quarter': quarter,
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_spend': total_spend,
+            'spending_by_property': spending_by_property,
+            'invoices': [
+                {
+                    'id': inv.id,
+                    'vendor': inv.vendor,
+                    'date': inv.date.isoformat() if inv.date else None,
+                    'total': inv.total,
+                    'property_id': inv.property_id
+                }
+                for inv in invoices
+            ],
+            'inventory_by_property': inventory_by_property,
+            'total_inventory_items': len(inventory_items),
+            'total_invoices': len(invoices)
+        }
+
 def grant_property_access(user_id: int, property_id: int, can_view: bool = True, can_edit: bool = False, can_delete: bool = False) -> UserPropertyAccess:
     """Grant a user access to a property with specific permissions."""
     with get_session() as s:

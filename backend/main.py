@@ -829,6 +829,47 @@ def report_yearly(year: int, property_id: int = None, user=Depends(auth.get_curr
     return {"year": int(year), "property_id": property_id, "total": total}
 
 
+@app.get('/api/reports/quarterly')
+def report_quarterly(year: int, quarter: int, property_id: int = None, user=Depends(auth.get_current_user)):
+    """Get quarterly report with spending, invoices, and inventory data.
+
+    Accessible by admins and property managers.
+    Property managers can only view reports for properties they manage.
+    """
+    from .crud import quarterly_report, user_can_access_property
+
+    # Validate quarter
+    if quarter < 1 or quarter > 4:
+        raise HTTPException(status_code=400, detail="Quarter must be between 1 and 4")
+
+    # Check permissions
+    organization_id = None
+    if user.role == 'admin' or user.is_super_admin:
+        # Admins can see all properties in their organization
+        organization_id = user.organization_id
+    elif user.role == 'property_manager':
+        # Property managers can only see specific properties they manage
+        if property_id:
+            # Check if they have access to this property
+            if not user_can_access_property(user.id, property_id, 'view'):
+                raise HTTPException(status_code=403, detail="You don't have access to this property")
+        else:
+            # If no property specified, use their organization
+            organization_id = user.organization_id
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient privileges to view reports")
+
+    try:
+        report = quarterly_report(property_id, organization_id, int(year), int(quarter))
+    except Exception as e:
+        logger.error(f"Error generating quarterly report: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return report
+
+
 def _extract_title(html: str):
     try:
         mt = re.search(r'<meta[^>]+property=["\"]og:title["\"][^>]+content=["\"]([^"\"]+)["\"]', html, re.IGNORECASE)

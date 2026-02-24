@@ -1986,6 +1986,26 @@
             <button class="btn-primary" onclick="getYearlyReport()" style="width: 100%;">Generate Yearly Report</button>
             <pre id="yearlyResult" class="mt-2" style="background: var(--primary-light); padding: 1rem; border-radius: 8px; overflow: auto; max-height: 300px;"></pre>
           </div>
+
+          <div class="card">
+            <h3>📅 Quarterly Report</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">View detailed quarterly spending, invoices, and inventory data</p>
+            <div class="input-group">
+              <input id="r_quarter_year" type="number" placeholder="Year (e.g., 2026)" />
+              <select id="r_quarter" style="padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);">
+                <option value="">Select Quarter</option>
+                <option value="1">Q1 (Jan-Mar)</option>
+                <option value="2">Q2 (Apr-Jun)</option>
+                <option value="3">Q3 (Jul-Sep)</option>
+                <option value="4">Q4 (Oct-Dec)</option>
+              </select>
+              <input id="r_quarter_prop" type="number" placeholder="Property ID (optional)" />
+            </div>
+            <button class="btn-primary" onclick="getQuarterlyReport()" style="width: 100%;">Generate Quarterly Report</button>
+            <div id="quarterlyResult" class="mt-2" style="background: var(--card-bg); padding: 1.5rem; border-radius: 8px; overflow: auto; max-height: 600px; display: none;">
+              <!-- Quarterly report will be rendered here -->
+            </div>
+          </div>
         </div>
 
         <!-- Settings Page -->
@@ -3532,6 +3552,126 @@
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (e) {
           resultEl.textContent = 'Error: ' + e.message;
+        }
+      }
+
+      async function getQuarterlyReport() {
+        const year = document.getElementById('r_quarter_year').value;
+        const quarter = document.getElementById('r_quarter').value;
+        const propId = document.getElementById('r_quarter_prop').value;
+        const resultEl = document.getElementById('quarterlyResult');
+
+        if (!year || !quarter) {
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = '<p style="color: var(--error);">Please select year and quarter</p>';
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set('year', year);
+        params.set('quarter', quarter);
+        if (propId) params.set('property_id', propId);
+
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<p style="color: var(--text-secondary);">Loading quarterly report...</p>';
+
+        try {
+          const res = await fetch('/api/reports/quarterly?' + params.toString(), { headers: authHeaders() });
+
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to generate report');
+          }
+
+          const data = await res.json();
+
+          // Format the quarterly report
+          let html = `
+            <div style="margin-bottom: 1.5rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--primary);">Q${data.quarter} ${data.year} Report</h4>
+              <p style="color: var(--text-secondary); margin: 0;">${new Date(data.start_date).toLocaleDateString()} - ${new Date(data.end_date).toLocaleDateString()}</p>
+            </div>
+
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="background: var(--primary-light); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Spending</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">$${data.total_spend.toFixed(2)}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Invoices</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.total_invoices}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Inventory Items</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.total_inventory_items}</div>
+              </div>
+            </div>
+
+            <!-- Spending by Property -->
+            <div style="margin-bottom: 1.5rem;">
+              <h5 style="margin: 0 0 1rem 0;">💰 Spending by Property</h5>
+              ${Object.keys(data.spending_by_property).length > 0 ? `
+                <div style="background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden;">
+                  ${Object.entries(data.spending_by_property).map(([propName, amount]) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <span style="font-weight: 600;">${propName}</span>
+                      <span style="color: var(--primary); font-weight: 700;">$${amount.toFixed(2)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No spending recorded for this quarter</p>'}
+            </div>
+
+            <!-- Invoices -->
+            <div style="margin-bottom: 1.5rem;">
+              <h5 style="margin: 0 0 1rem 0;">📄 Invoices</h5>
+              ${data.invoices.length > 0 ? `
+                <div style="max-height: 300px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  ${data.invoices.map(inv => `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--card-border);">
+                      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                        <div>
+                          <div style="font-weight: 600;">${inv.vendor}</div>
+                          <div style="font-size: 0.875rem; color: var(--text-secondary);">${inv.date ? new Date(inv.date).toLocaleDateString() : 'No date'}</div>
+                        </div>
+                        <div style="font-weight: 700; color: var(--primary);">$${inv.total.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<p style="color: var(--text-secondary);">No invoices recorded for this quarter</p>'}
+            </div>
+
+            <!-- Inventory by Property -->
+            <div>
+              <h5 style="margin: 0 0 1rem 0;">📦 Inventory Added by Property</h5>
+              ${Object.keys(data.inventory_by_property).length > 0 ? `
+                ${Object.entries(data.inventory_by_property).map(([propName, items]) => `
+                  <div style="margin-bottom: 1.5rem;">
+                    <h6 style="margin: 0 0 0.5rem 0; color: var(--primary);">${propName} (${items.length} items)</h6>
+                    <div style="max-height: 200px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                      ${items.map(item => `
+                        <div style="padding: 0.75rem; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between;">
+                          <div>
+                            <span style="font-weight: 600;">${item.name}</span>
+                            ${item.unit_number ? `<span style="color: var(--text-secondary); font-size: 0.875rem;"> - Unit ${item.unit_number}</span>` : ''}
+                            <div style="font-size: 0.875rem; color: var(--text-secondary);">Qty: ${item.quantity}</div>
+                          </div>
+                          <div style="color: var(--primary); font-weight: 600;">$${item.cost.toFixed(2)}</div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                `).join('')}
+              ` : '<p style="color: var(--text-secondary);">No inventory added this quarter</p>'}
+            </div>
+          `;
+
+          resultEl.innerHTML = html;
+        } catch (e) {
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `<p style="color: var(--error);">Error: ${e.message}</p>`;
         }
       }
 

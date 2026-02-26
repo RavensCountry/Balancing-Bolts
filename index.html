@@ -637,7 +637,9 @@
       }
 
       /* Login Screen */
-      #loginScreen {
+      /* Login and Signup Screens - Full screen overlays */
+      #loginScreen,
+      #signupScreen {
         position: fixed;
         top: 0;
         left: 0;
@@ -650,15 +652,18 @@
         display: none;
         align-items: center;
         justify-content: center;
-        overflow: hidden;
+        overflow-y: auto;
+        overflow-x: hidden;
         z-index: 1000;
       }
 
-      #loginScreen.active {
+      #loginScreen.active,
+      #signupScreen.active {
         display: flex;
       }
 
-      #loginScreen::before {
+      #loginScreen::before,
+      #signupScreen::before {
         content: '';
         position: absolute;
         top: 0;
@@ -903,12 +908,18 @@
         display: block;
       }
 
-      /* Login and signup pages use flex for centering */
-      #loginScreen.active,
-      #signupScreen.active {
-        display: flex;
+      /* Login and signup screens override - use flex for centering */
+      #loginScreen,
+      #signupScreen {
+        display: none !important;
       }
 
+      #loginScreen.active,
+      #signupScreen.active {
+        display: flex !important;
+      }
+
+      /* Main app container should never show when login/signup is active */
       .main-app-container {
         display: none;
       }
@@ -2820,17 +2831,26 @@
           console.error('Error loading organizations:', e);
         }
 
-        // Show signup screen
+        // Hide all other screens
         document.getElementById('loginScreen').classList.remove('active');
+        document.getElementById('mainApp').classList.remove('active');
+
+        // Show signup screen
         document.getElementById('signupScreen').classList.add('active');
+
         // Keep login-page class for background
         document.body.classList.add('login-page');
       }
 
       // Show login screen
       function showLoginScreen() {
+        // Hide all other screens
         document.getElementById('signupScreen').classList.remove('active');
+        document.getElementById('mainApp').classList.remove('active');
+
+        // Show login screen
         document.getElementById('loginScreen').classList.add('active');
+
         // Keep login-page class for background
         document.body.classList.add('login-page');
       }
@@ -2992,15 +3012,18 @@
       async function showMainApp() {
         console.log('=== showMainApp called ===');
         const loginScreen = document.getElementById('loginScreen');
+        const signupScreen = document.getElementById('signupScreen');
         const mainApp = document.getElementById('mainApp');
 
         console.log('Before changes:');
         console.log('- loginScreen classes:', loginScreen.className);
+        console.log('- signupScreen classes:', signupScreen.className);
         console.log('- mainApp classes:', mainApp.className);
 
-        // Hide login screen
+        // Hide login and signup screens
         loginScreen.classList.remove('active');
-        console.log('Removed active from loginScreen');
+        signupScreen.classList.remove('active');
+        console.log('Removed active from loginScreen and signupScreen');
 
         // Remove login-page class from body
         document.body.classList.remove('login-page');
@@ -5502,7 +5525,10 @@
           // Start inactivity timer for logged-in users
           resetInactivityTimer();
         } else {
+          // Ensure only login screen is visible
           document.getElementById('loginScreen').classList.add('active');
+          document.getElementById('signupScreen').classList.remove('active');
+          document.getElementById('mainApp').classList.remove('active');
           // Add login-page class for special background
           document.body.classList.add('login-page');
         }

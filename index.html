@@ -90,18 +90,24 @@
       /* Login page specific background */
       body.login-page {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        background-attachment: fixed;
         position: relative;
         overflow: hidden;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       body.dark-mode.login-page {
         background: linear-gradient(135deg, #1e3a8a 0%, #312e81 50%, #4c1d95 100%);
+        background-attachment: fixed;
       }
 
       /* Animated background pattern for login */
       body.login-page::before {
         content: '';
-        position: absolute;
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
@@ -112,11 +118,36 @@
           radial-gradient(circle at 40% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
         animation: float 20s ease-in-out infinite;
         pointer-events: none;
+        z-index: 0;
       }
 
       @keyframes float {
         0%, 100% { transform: translateY(0) scale(1); }
         50% { transform: translateY(-20px) scale(1.05); }
+      }
+
+      /* Ensure login/signup screens are centered on mobile */
+      #loginScreen, #signupScreen {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Mobile-specific login page adjustments */
+      @media (max-width: 768px) {
+        body.login-page {
+          background-attachment: scroll; /* Better performance on mobile */
+        }
+
+        body.dark-mode.login-page {
+          background-attachment: scroll;
+        }
+
+        #loginScreen, #signupScreen {
+          padding: 2rem 0;
+          min-height: 100vh;
+        }
       }
 
       html {
@@ -872,6 +903,12 @@
         display: block;
       }
 
+      /* Login and signup pages use flex for centering */
+      #loginScreen.active,
+      #signupScreen.active {
+        display: flex;
+      }
+
       .main-app-container {
         display: none;
       }
@@ -917,34 +954,203 @@
       }
 
       /* Responsive */
+      /* Mobile Responsive Design */
       @media (max-width: 768px) {
         .container {
           padding: 1rem;
         }
 
+        .header {
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+        }
+
         .header h1 {
-          font-size: 2rem;
+          font-size: 1.5rem;
+        }
+
+        .header p {
+          font-size: 0.9rem;
         }
 
         .nav-tabs {
-          padding: 0.75rem;
+          padding: 0.5rem;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .nav-tabs::-webkit-scrollbar {
+          display: none;
         }
 
         .nav-tab {
-          padding: 0.625rem 1rem;
+          padding: 0.75rem 1rem;
           font-size: 0.875rem;
+          min-width: auto;
+          flex-shrink: 0;
+        }
+
+        .nav-tab-icon {
+          font-size: 1.25rem;
         }
 
         .stats-grid {
           grid-template-columns: 1fr;
+          gap: 1rem;
         }
 
         .stat-value {
           font-size: 1.75rem;
         }
 
+        /* Login/Signup responsive */
+        .login-container {
+          max-width: 100%;
+          width: 95%;
+          padding: 0 1rem;
+        }
+
         .login-card {
-          padding: 2rem;
+          padding: 2rem 1.5rem;
+          border-radius: 16px;
+        }
+
+        .login-header h2 {
+          font-size: 1.75rem;
+        }
+
+        .login-header p {
+          font-size: 0.875rem;
+        }
+
+        .login-form-group input {
+          padding: 0.875rem 1rem;
+          font-size: 16px; /* Prevents zoom on iOS */
+        }
+
+        .login-buttons {
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .login-buttons button {
+          width: 100%;
+          padding: 1rem;
+        }
+
+        /* Make cards more compact on mobile */
+        .card {
+          padding: 1.25rem;
+          margin-bottom: 1rem;
+        }
+
+        .card h3 {
+          font-size: 1rem;
+        }
+
+        /* Input fields touch-friendly */
+        input, select, textarea {
+          padding: 0.875rem 1rem;
+          font-size: 16px; /* Prevents zoom on iOS */
+        }
+
+        /* Buttons touch-friendly */
+        button {
+          min-height: 44px; /* iOS minimum touch target */
+          padding: 0.75rem 1.25rem;
+        }
+
+        .btn-primary, .btn-secondary, .btn-danger {
+          font-size: 0.9375rem;
+        }
+
+        /* Property cards in grid */
+        .properties-grid {
+          grid-template-columns: 1fr;
+        }
+
+        /* Inventory table responsive */
+        .inventory-table {
+          font-size: 0.875rem;
+        }
+
+        /* Modal adjustments */
+        .modal-content {
+          width: 95%;
+          max-width: none;
+          margin: 1rem;
+          padding: 1.5rem;
+        }
+
+        /* AI Chat Widget on mobile */
+        #aiChatWidget {
+          width: calc(100vw - 2rem);
+          max-width: 400px;
+          bottom: 1rem;
+          right: 1rem;
+        }
+      }
+
+      /* Signup form responsive - stack columns on mobile */
+      @media (max-width: 640px) {
+        .login-card > div[style*="grid-template-columns"] {
+          grid-template-columns: 1fr !important;
+          gap: 0 !important;
+        }
+      }
+
+      /* Small phones */
+      @media (max-width: 480px) {
+        .login-card {
+          padding: 1.5rem 1rem;
+        }
+
+        .login-header h2 {
+          font-size: 1.5rem;
+        }
+
+        .header h1 {
+          font-size: 1.25rem;
+        }
+
+        .nav-tab span:not(.nav-tab-icon) {
+          display: none; /* Hide text labels on very small screens, show only icons */
+        }
+
+        .nav-tab {
+          padding: 0.75rem;
+        }
+
+        .card {
+          padding: 1rem;
+        }
+
+        button {
+          font-size: 0.875rem;
+        }
+
+        /* Make signup card full width on small phones */
+        .login-card {
+          max-width: 100% !important;
+        }
+      }
+
+      /* Landscape mobile */
+      @media (max-width: 768px) and (orientation: landscape) {
+        .login-container {
+          max-height: 90vh;
+          overflow-y: auto;
+        }
+
+        .login-card {
+          padding: 1.5rem;
+        }
+
+        body.login-page::before {
+          animation: none; /* Disable animation in landscape for performance */
         }
       }
 
@@ -2617,12 +2823,16 @@
         // Show signup screen
         document.getElementById('loginScreen').classList.remove('active');
         document.getElementById('signupScreen').classList.add('active');
+        // Keep login-page class for background
+        document.body.classList.add('login-page');
       }
 
       // Show login screen
       function showLoginScreen() {
         document.getElementById('signupScreen').classList.remove('active');
         document.getElementById('loginScreen').classList.add('active');
+        // Keep login-page class for background
+        document.body.classList.add('login-page');
       }
 
       // Submit signup form

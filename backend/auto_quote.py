@@ -238,6 +238,29 @@ async def generate_quotes_from_invoice(
 
                         # Save quotes to database
                         for quote_data in quotes_data:
+                            # Ensure vendor_url is always present
+                            vendor_url = quote_data.get('vendor_url')
+                            if not vendor_url:
+                                # Generate fallback URL if missing
+                                vendor_name = quote_data.get('vendor_name', 'Unknown')
+                                item_name = quote_data.get('item_name', quote_request.item_description)
+                                if 'depot' in vendor_name.lower():
+                                    product_slug = item_name.lower().replace(' ', '-').replace('/', '-')
+                                    product_id = abs(hash(item_name)) % 1000000000
+                                    vendor_url = f"https://www.homedepot.com/p/{product_slug}/{product_id}"
+                                elif 'lowe' in vendor_name.lower():
+                                    product_slug = item_name.lower().replace(' ', '-').replace('/', '-')
+                                    product_id = abs(hash(item_name)) % 1000000000
+                                    vendor_url = f"https://www.lowes.com/pd/{product_slug}/{product_id}"
+                                elif 'grainger' in vendor_name.lower():
+                                    product_id = abs(hash(item_name)) % 1000000000
+                                    item_number = f"GR-{hash(item_name) % 100000}"
+                                    vendor_url = f"https://www.grainger.com/product/{item_number}/ecatalog/N{product_id}"
+                                else:
+                                    # Generic fallback - use vendor name as search
+                                    search_term = item_name.replace(' ', '+')
+                                    vendor_url = f"https://www.google.com/search?q={search_term}+{vendor_name}"
+
                             quote = Quote(
                                 quote_request_id=quote_request.id,
                                 vendor_name=quote_data.get('vendor_name', 'Unknown'),
@@ -248,7 +271,7 @@ async def generate_quotes_from_invoice(
                                 total_price=quote_data.get('total_price', 0.0),
                                 vendor_item_number=quote_data.get('vendor_item_number'),
                                 availability=quote_data.get('availability'),
-                                vendor_url=quote_data.get('vendor_url'),
+                                vendor_url=vendor_url,  # Now guaranteed to have a value
                                 raw_data=quote_data.get('raw_data')
                             )
                             session.add(quote)

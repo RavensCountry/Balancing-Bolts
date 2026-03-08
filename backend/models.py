@@ -64,9 +64,12 @@ class Invoice(SQLModel, table=True):
 class ActivityLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    action: str
+    action: str  # e.g., "login", "search", "button_click", "page_view", "create", "update", "delete"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    details: Optional[str] = None
+    details: Optional[str] = None  # JSON string with additional context
+    ip_address: Optional[str] = None  # User's IP address
+    page: Optional[str] = None  # Page where action occurred
+    target: Optional[str] = None  # Target element (button ID, search query, etc.)
 
 class Embedding(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -3008,6 +3008,63 @@
         return token ? { 'Authorization': 'Bearer ' + token } : {};
       }
 
+      // Activity Tracking Functions
+      let activityTrackingEnabled = true;
+      let currentPage = 'dashboard';
+
+      async function logActivity(action, target = null, details = null) {
+        if (!activityTrackingEnabled) return;
+
+        try {
+          const token = localStorage.getItem('bb_token');
+          if (!token) return; // Don't log if not logged in
+
+          const fd = new FormData();
+          fd.append('action', action);
+          fd.append('page', currentPage);
+          if (target) fd.append('target', target);
+          if (details) fd.append('details', details);
+
+          // Send activity log without blocking the UI
+          fetch('/api/activity/log', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: fd
+          }).catch(e => {
+            console.debug('Activity logging failed:', e);
+          });
+        } catch (e) {
+          console.debug('Activity logging error:', e);
+        }
+      }
+
+      // Track button clicks
+      function trackButtonClick(buttonId, buttonText) {
+        logActivity('button_click', buttonId, `Clicked: ${buttonText}`);
+      }
+
+      // Track searches
+      function trackSearch(searchTerm, searchType = 'general') {
+        logActivity('search', searchType, `Search query: ${searchTerm}`);
+      }
+
+      // Track page views
+      function trackPageView(pageName) {
+        currentPage = pageName;
+        logActivity('page_view', pageName, `Viewed ${pageName} page`);
+      }
+
+      // Track form submissions
+      function trackFormSubmit(formName) {
+        logActivity('form_submit', formName, `Submitted ${formName} form`);
+      }
+
+      // Track data creation/updates/deletes
+      function trackDataAction(actionType, dataType, dataId = null) {
+        const details = dataId ? `${actionType} ${dataType} (ID: ${dataId})` : `${actionType} ${dataType}`;
+        logActivity(actionType, dataType, details);
+      }
+
       // Show main app
       async function showMainApp() {
         console.log('=== showMainApp called ===');
@@ -3057,6 +3114,9 @@
       // Page navigation
       function showPage(pageName) {
         console.log('=== showPage called with:', pageName, '===');
+
+        // Track page view
+        trackPageView(pageName);
 
         // Hide all pages inside mainApp
         const allPages = document.querySelectorAll('#mainApp .page');
@@ -4304,6 +4364,12 @@
 
       function filterEmployees() {
         const searchTerm = document.getElementById('employeeSearch').value.toLowerCase();
+
+        // Track employee search
+        if (searchTerm.length > 0) {
+          trackSearch(searchTerm, 'employees');
+        }
+
         const filtered = allEmployees.filter(emp =>
           emp.name.toLowerCase().includes(searchTerm) ||
           emp.email.toLowerCase().includes(searchTerm) ||
@@ -4586,6 +4652,18 @@
               </button>
             </div>
 
+            <div style="margin-bottom: 1.5rem; padding-top: 1.5rem; border-top: 2px solid var(--card-border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h4 style="margin: 0;">📊 Activity Log</h4>
+                <button class="btn-secondary" onclick="loadEmployeeActivity(${employee.id})" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                  🔄 Refresh
+                </button>
+              </div>
+              <div id="employeeActivityLog_${employee.id}" style="max-height: 400px; overflow-y: auto; background: var(--bg-gradient-start); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem;">
+                <p style="color: var(--text-muted); text-align: center;">Loading activity...</p>
+              </div>
+            </div>
+
             <div style="padding-top: 1.5rem; border-top: 2px solid var(--card-border);">
               <button class="btn-danger" onclick="deleteEmployee(${employee.id}, '${employee.name}')" style="width: 100%;">
                 🗑️ Delete Employee & Remove Login
@@ -4599,6 +4677,100 @@
 
         modal.innerHTML = html;
         document.body.appendChild(modal);
+
+        // Load activity log automatically
+        loadEmployeeActivity(employeeId);
+      }
+
+      async function loadEmployeeActivity(userId, limit = 50) {
+        const container = document.getElementById(`employeeActivityLog_${userId}`);
+        if (!container) return;
+
+        try {
+          container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Loading activity...</p>';
+
+          const res = await fetch(`/api/activity/user/${userId}?limit=${limit}`, {
+            headers: authHeaders()
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to load activity');
+          }
+
+          const data = await res.json();
+          const activities = data.activities || [];
+
+          if (activities.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted); text-align: center; font-style: italic;">No activity recorded yet.</p>';
+            return;
+          }
+
+          // Group activities by date
+          const activityByDate = {};
+          activities.forEach(activity => {
+            const date = new Date(activity.timestamp).toLocaleDateString();
+            if (!activityByDate[date]) {
+              activityByDate[date] = [];
+            }
+            activityByDate[date].push(activity);
+          });
+
+          let html = '';
+          Object.keys(activityByDate).forEach(date => {
+            const dayActivities = activityByDate[date];
+            html += `
+              <div style="margin-bottom: 1.5rem;">
+                <h5 style="margin: 0 0 0.75rem 0; color: var(--primary); font-size: 0.875rem; font-weight: 600; text-transform: uppercase;">
+                  📅 ${date}
+                </h5>
+                <div style="display: grid; gap: 0.5rem;">
+            `;
+
+            dayActivities.forEach(activity => {
+              const time = new Date(activity.timestamp).toLocaleTimeString();
+              const actionIcon = {
+                'login': '🔐',
+                'logout': '🚪',
+                'page_view': '👁️',
+                'button_click': '🖱️',
+                'search': '🔍',
+                'form_submit': '📝',
+                'create': '➕',
+                'update': '✏️',
+                'delete': '🗑️'
+              }[activity.action] || '📌';
+
+              html += `
+                <div style="background: var(--card-bg); border-left: 3px solid var(--primary); padding: 0.75rem; border-radius: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
+                    <div style="flex: 1;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <span style="font-size: 1.25rem;">${actionIcon}</span>
+                        <strong style="font-size: 0.875rem; color: var(--text-primary);">${activity.action.replace(/_/g, ' ').toUpperCase()}</strong>
+                      </div>
+                      ${activity.page ? `<p style="margin: 0.25rem 0; font-size: 0.8rem; color: var(--text-secondary);">📄 Page: ${activity.page}</p>` : ''}
+                      ${activity.target ? `<p style="margin: 0.25rem 0; font-size: 0.8rem; color: var(--text-secondary);">🎯 Target: ${activity.target}</p>` : ''}
+                      ${activity.details ? `<p style="margin: 0.25rem 0; font-size: 0.8rem; color: var(--text-muted);">${activity.details}</p>` : ''}
+                      ${activity.ip_address ? `<p style="margin: 0.25rem 0; font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">🌐 ${activity.ip_address}</p>` : ''}
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">⏰ ${time}</span>
+                  </div>
+                </div>
+              `;
+            });
+
+            html += `
+                </div>
+              </div>
+            `;
+          });
+
+          container.innerHTML = html;
+
+        } catch (e) {
+          console.error('Error loading employee activity:', e);
+          container.innerHTML = '<p style="color: var(--danger); text-align: center;">❌ Failed to load activity log</p>';
+        }
       }
 
       async function changeEmployeeRole(employeeId) {

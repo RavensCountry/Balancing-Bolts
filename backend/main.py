@@ -19,7 +19,7 @@ from typing import Optional
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
 from .database import get_session, engine
-from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice, Organization
+from .models import User, VendorCredential, QuoteRequest, Quote, QuoteStatus, Property, Invoice, Organization, ActivityLog
 from .database import init_db
 from . import ai
 from . import auth
@@ -1125,6 +1125,23 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     user = auth.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail='Invalid credentials')
+
+    # Log successful login
+    try:
+        ip_address = request.client.host if request.client else None
+        with get_session() as s:
+            activity = ActivityLog(
+                user_id=user.id,
+                action="login",
+                page="login",
+                details=f"Successful login from IP {ip_address}",
+                ip_address=ip_address
+            )
+            s.add(activity)
+            s.commit()
+    except Exception as e:
+        logger.error(f"Error logging login activity: {e}")
+
     access_token = auth.create_access_token({"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -2052,3 +2069,89 @@ async def generate_invoice_quotes(
         except Exception as e:
             logger.exception(f"Error generating quotes for invoice {invoice_id}: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate quotes: {str(e)}")
+
+
+# Activity Logging Endpoints
+
+@app.post('/api/activity/log')
+async def log_activity(
+    request: Request,
+    action: str = Form(...),
+    page: Optional[str] = Form(None),
+    target: Optional[str] = Form(None),
+    details: Optional[str] = Form(None),
+    user=Depends(auth.get_current_user)
+):
+    """Log user activity for tracking"""
+    try:
+        # Get IP address from request
+        ip_address = request.client.host if request.client else None
+
+        with get_session() as s:
+            activity = ActivityLog(
+                user_id=user.id,
+                action=action,
+                page=page,
+                target=target,
+                details=details,
+                ip_address=ip_address
+            )
+            s.add(activity)
+            s.commit()
+            s.refresh(activity)
+
+        return {"status": "success", "activity_id": activity.id}
+    except Exception as e:
+        logger.error(f"Error logging activity: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to log activity: {str(e)}")
+
+
+@app.get('/api/activity/user/{user_id}')
+def get_user_activity(
+    user_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    current_user=Depends(auth.require_role('admin'))
+):
+    """Get activity logs for a specific user (admin only)"""
+    try:
+        with get_session() as s:
+            # Get total count
+            count_query = select(ActivityLog).where(ActivityLog.user_id == user_id)
+            total = len(s.exec(count_query).all())
+
+            # Get paginated results, ordered by most recent first
+            query = select(ActivityLog).where(ActivityLog.user_id == user_id).order_by(ActivityLog.timestamp.desc()).offset(offset).limit(limit)
+            activities = s.exec(query).all()
+
+            # Get user info
+            user = s.exec(select(User).where(User.id == user_id)).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            return {
+                "user": {
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email,
+                    "role": user.role
+                },
+                "total": total,
+                "activities": [
+                    {
+                        "id": a.id,
+                        "action": a.action,
+                        "timestamp": a.timestamp.isoformat(),
+                        "page": a.page,
+                        "target": a.target,
+                        "details": a.details,
+                        "ip_address": a.ip_address
+                    }
+                    for a in activities
+                ]
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user activity: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch activity: {str(e)}")

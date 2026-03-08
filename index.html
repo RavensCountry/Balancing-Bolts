@@ -2333,6 +2333,73 @@
               <!-- Quarterly report will be rendered here -->
             </div>
           </div>
+
+          <!-- Activity Report (Admin Only) -->
+          <div class="card" id="activityReportCard" style="display: none;">
+            <h3>📊 Activity Report</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">View and analyze user activity across the system</p>
+
+            <!-- Filters -->
+            <div style="display: grid; gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem;">Start Date</label>
+                  <input id="activity_start_date" type="date" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);" />
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem;">End Date</label>
+                  <input id="activity_end_date" type="date" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);" />
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem;">User</label>
+                  <select id="activity_user" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);">
+                    <option value="">All Users</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem;">Action Type</label>
+                  <select id="activity_action" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);">
+                    <option value="">All Actions</option>
+                    <option value="login">Login</option>
+                    <option value="logout">Logout</option>
+                    <option value="page_view">Page View</option>
+                    <option value="button_click">Button Click</option>
+                    <option value="search">Search</option>
+                    <option value="form_submit">Form Submit</option>
+                    <option value="create">Create</option>
+                    <option value="update">Update</option>
+                    <option value="delete">Delete</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem;">Page</label>
+                  <select id="activity_page" style="width: 100%; padding: 0.75rem; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-gradient-start); color: var(--text-primary);">
+                    <option value="">All Pages</option>
+                    <option value="dashboard">Dashboard</option>
+                    <option value="inventory">Inventory</option>
+                    <option value="properties">Properties</option>
+                    <option value="invoices">Invoices</option>
+                    <option value="quotes">Quotes</option>
+                    <option value="reports">Reports</option>
+                    <option value="settings">Settings</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+              <button class="btn-primary" onclick="getActivityReport()" style="flex: 1;">📊 Generate Report</button>
+              <button class="btn-secondary" onclick="exportActivityReport()" style="flex: 1;">📥 Export to CSV</button>
+              <button class="btn-secondary" onclick="clearActivityFilters()" style="padding: 0.75rem 1.5rem;">🔄 Clear Filters</button>
+            </div>
+
+            <div id="activityReportResult" style="display: none;">
+              <!-- Activity report will be rendered here -->
+            </div>
+          </div>
         </div>
 
         <!-- Settings Page -->
@@ -3202,11 +3269,16 @@
 
           // Show/hide admin sections
           const isAdmin = currentUser.role === 'admin';
-          const adminSections = ['adminAddProperty', 'adminDeleteProperty', 'adminUserManagement'];
+          const adminSections = ['adminAddProperty', 'adminDeleteProperty', 'adminUserManagement', 'activityReportCard'];
           adminSections.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = isAdmin ? 'block' : 'none';
           });
+
+          // Load users for activity report dropdown if admin
+          if (isAdmin) {
+            loadActivityReportUsers();
+          }
         } catch (e) {
           console.error('Error loading user:', e);
         }
@@ -4241,6 +4313,263 @@
         } catch (e) {
           resultEl.style.display = 'block';
           resultEl.innerHTML = `<p style="color: var(--error);">Error: ${e.message}</p>`;
+        }
+      }
+
+      // Activity Report Functions
+      async function getActivityReport() {
+        const startDate = document.getElementById('activity_start_date').value;
+        const endDate = document.getElementById('activity_end_date').value;
+        const userId = document.getElementById('activity_user').value;
+        const action = document.getElementById('activity_action').value;
+        const page = document.getElementById('activity_page').value;
+        const resultEl = document.getElementById('activityReportResult');
+
+        const params = new URLSearchParams();
+        if (startDate) params.set('start_date', startDate + 'T00:00:00');
+        if (endDate) params.set('end_date', endDate + 'T23:59:59');
+        if (userId) params.set('user_id', userId);
+        if (action) params.set('action', action);
+        if (page) params.set('page', page);
+        params.set('limit', '500');
+
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Loading activity report...</p>';
+
+        try {
+          const res = await fetch('/api/activity/report?' + params.toString(), { headers: authHeaders() });
+
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to generate report');
+          }
+
+          const data = await res.json();
+
+          // Format the activity report
+          let html = `
+            <!-- Statistics Summary -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="background: var(--primary-light); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Total Activities</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">${data.statistics.total_activities.toLocaleString()}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Unique Users</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.statistics.unique_users}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Unique Pages</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.statistics.unique_pages}</div>
+              </div>
+              <div style="background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Filtered Results</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">${data.total.toLocaleString()}</div>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+              <!-- Top Users -->
+              <div>
+                <h5 style="margin: 0 0 1rem 0;">👥 Top Users by Activity</h5>
+                <div style="max-height: 300px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  ${data.statistics.top_users.slice(0, 10).map(user => `
+                    <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center;">
+                      <div>
+                        <div style="font-weight: 600;">${user.user_name}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">${user.user_email}</div>
+                      </div>
+                      <div style="background: var(--primary-light); padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 600; color: var(--primary);">
+                        ${user.activity_count}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Action Breakdown -->
+              <div>
+                <h5 style="margin: 0 0 1rem 0;">📊 Actions Breakdown</h5>
+                <div style="max-height: 300px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  ${Object.entries(data.statistics.action_counts).sort((a, b) => b[1] - a[1]).map(([action, count]) => {
+                    const actionIcons = {
+                      'login': '🔐',
+                      'logout': '🚪',
+                      'page_view': '👁️',
+                      'button_click': '🖱️',
+                      'search': '🔍',
+                      'form_submit': '📝',
+                      'create': '➕',
+                      'update': '✏️',
+                      'delete': '🗑️'
+                    };
+                    const icon = actionIcons[action] || '📌';
+                    return `
+                      <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                          <span style="font-size: 1.25rem;">${icon}</span>
+                          <span style="font-weight: 600;">${action.replace(/_/g, ' ').toUpperCase()}</span>
+                        </div>
+                        <div style="background: var(--primary-light); padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 600; color: var(--primary);">
+                          ${count}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity Table -->
+            <div>
+              <h5 style="margin: 0 0 1rem 0;">📋 Recent Activity (${data.activities.length} of ${data.total})</h5>
+              ${data.activities.length > 0 ? `
+                <div style="max-height: 600px; overflow: auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; background: var(--bg-gradient-start); border-bottom: 2px solid var(--card-border);">
+                      <tr>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Timestamp</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">User</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Action</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Page</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Target</th>
+                        <th style="padding: 0.75rem; text-align: left; font-weight: 600;">IP Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${data.activities.map(activity => {
+                        const actionIcons = {
+                          'login': '🔐',
+                          'logout': '🚪',
+                          'page_view': '👁️',
+                          'button_click': '🖱️',
+                          'search': '🔍',
+                          'form_submit': '📝',
+                          'create': '➕',
+                          'update': '✏️',
+                          'delete': '🗑️'
+                        };
+                        const icon = actionIcons[activity.action] || '📌';
+                        return `
+                          <tr style="border-bottom: 1px solid var(--card-border);">
+                            <td style="padding: 0.75rem; font-size: 0.875rem; white-space: nowrap;">
+                              ${new Date(activity.timestamp).toLocaleString()}
+                            </td>
+                            <td style="padding: 0.75rem;">
+                              <div style="font-weight: 600; font-size: 0.875rem;">${activity.user_name}</div>
+                              <div style="font-size: 0.75rem; color: var(--text-secondary);">${activity.user_email}</div>
+                            </td>
+                            <td style="padding: 0.75rem;">
+                              <span style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.875rem;">
+                                ${icon} ${activity.action.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td style="padding: 0.75rem; font-size: 0.875rem;">${activity.page || '-'}</td>
+                            <td style="padding: 0.75rem; font-size: 0.875rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${activity.target || ''}">${activity.target || '-'}</td>
+                            <td style="padding: 0.75rem; font-size: 0.75rem; font-family: monospace; color: var(--text-secondary);">${activity.ip_address || '-'}</td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              ` : '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No activity found matching the selected filters.</p>'}
+            </div>
+          `;
+
+          resultEl.innerHTML = html;
+        } catch (e) {
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `<p style="color: var(--error); text-align: center; padding: 2rem;">Error: ${e.message}</p>`;
+        }
+      }
+
+      async function exportActivityReport() {
+        const startDate = document.getElementById('activity_start_date').value;
+        const endDate = document.getElementById('activity_end_date').value;
+        const userId = document.getElementById('activity_user').value;
+        const action = document.getElementById('activity_action').value;
+        const page = document.getElementById('activity_page').value;
+
+        const params = new URLSearchParams();
+        if (startDate) params.set('start_date', startDate + 'T00:00:00');
+        if (endDate) params.set('end_date', endDate + 'T23:59:59');
+        if (userId) params.set('user_id', userId);
+        if (action) params.set('action', action);
+        if (page) params.set('page', page);
+        params.set('limit', '10000'); // Higher limit for export
+
+        try {
+          const res = await fetch('/api/activity/report?' + params.toString(), { headers: authHeaders() });
+
+          if (!res.ok) {
+            throw new Error('Failed to fetch activity data');
+          }
+
+          const data = await res.json();
+
+          // Create CSV content
+          const headers = ['Timestamp', 'User ID', 'User Name', 'User Email', 'User Role', 'Action', 'Page', 'Target', 'Details', 'IP Address'];
+          const rows = data.activities.map(a => [
+            new Date(a.timestamp).toISOString(),
+            a.user_id || '',
+            a.user_name || '',
+            a.user_email || '',
+            a.user_role || '',
+            a.action || '',
+            a.page || '',
+            a.target || '',
+            (a.details || '').replace(/"/g, '""'), // Escape quotes
+            a.ip_address || ''
+          ]);
+
+          const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+          ].join('\n');
+
+          // Download CSV file
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `activity_report_${new Date().toISOString().slice(0, 10)}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          alert(`Exported ${data.activities.length} activities to CSV`);
+        } catch (e) {
+          alert('Error exporting activity report: ' + e.message);
+        }
+      }
+
+      function clearActivityFilters() {
+        document.getElementById('activity_start_date').value = '';
+        document.getElementById('activity_end_date').value = '';
+        document.getElementById('activity_user').value = '';
+        document.getElementById('activity_action').value = '';
+        document.getElementById('activity_page').value = '';
+        document.getElementById('activityReportResult').style.display = 'none';
+      }
+
+      async function loadActivityReportUsers() {
+        try {
+          const res = await fetch('/api/users', { headers: authHeaders() });
+          if (res.ok) {
+            const users = await res.json();
+            const select = document.getElementById('activity_user');
+            select.innerHTML = '<option value="">All Users</option>';
+            users.forEach(user => {
+              const option = document.createElement('option');
+              option.value = user.id;
+              option.textContent = `${user.name} (${user.email})`;
+              select.appendChild(option);
+            });
+          }
+        } catch (e) {
+          console.error('Error loading users for activity report:', e);
         }
       }
 

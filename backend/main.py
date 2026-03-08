@@ -2155,3 +2155,120 @@ def get_user_activity(
     except Exception as e:
         logger.error(f"Error fetching user activity: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch activity: {str(e)}")
+
+
+@app.get('/api/activity/report')
+def get_activity_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_id: Optional[int] = None,
+    action: Optional[str] = None,
+    page: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+    current_user=Depends(auth.require_role('admin'))
+):
+    """Get comprehensive activity report with filtering (admin only)"""
+    try:
+        from datetime import datetime
+        with get_session() as s:
+            # Build base query
+            query = select(ActivityLog)
+
+            # Apply filters
+            if start_date:
+                try:
+                    start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                    query = query.where(ActivityLog.timestamp >= start_dt)
+                except:
+                    pass
+
+            if end_date:
+                try:
+                    end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                    query = query.where(ActivityLog.timestamp <= end_dt)
+                except:
+                    pass
+
+            if user_id:
+                query = query.where(ActivityLog.user_id == user_id)
+
+            if action:
+                query = query.where(ActivityLog.action == action)
+
+            if page:
+                query = query.where(ActivityLog.page == page)
+
+            # Get total count
+            total = len(s.exec(query).all())
+
+            # Apply ordering and pagination
+            query = query.order_by(ActivityLog.timestamp.desc()).offset(offset).limit(limit)
+            activities = s.exec(query).all()
+
+            # Get user information for each activity
+            activity_data = []
+            for a in activities:
+                user = s.exec(select(User).where(User.id == a.user_id)).first() if a.user_id else None
+                activity_data.append({
+                    "id": a.id,
+                    "user_id": a.user_id,
+                    "user_name": user.name if user else "Unknown",
+                    "user_email": user.email if user else "",
+                    "user_role": user.role if user else "",
+                    "action": a.action,
+                    "timestamp": a.timestamp.isoformat(),
+                    "page": a.page,
+                    "target": a.target,
+                    "details": a.details,
+                    "ip_address": a.ip_address
+                })
+
+            # Get summary statistics
+            all_activities = s.exec(select(ActivityLog)).all()
+            action_counts = {}
+            user_counts = {}
+            page_counts = {}
+
+            for a in all_activities:
+                # Count by action
+                action_counts[a.action] = action_counts.get(a.action, 0) + 1
+
+                # Count by user
+                if a.user_id:
+                    user_counts[a.user_id] = user_counts.get(a.user_id, 0) + 1
+
+                # Count by page
+                if a.page:
+                    page_counts[a.page] = page_counts.get(a.page, 0) + 1
+
+            # Get top users
+            top_users = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_users_data = []
+            for user_id, count in top_users:
+                user = s.exec(select(User).where(User.id == user_id)).first()
+                if user:
+                    top_users_data.append({
+                        "user_id": user_id,
+                        "user_name": user.name,
+                        "user_email": user.email,
+                        "activity_count": count
+                    })
+
+            return {
+                "total": total,
+                "activities": activity_data,
+                "statistics": {
+                    "total_activities": len(all_activities),
+                    "action_counts": action_counts,
+                    "page_counts": page_counts,
+                    "top_users": top_users_data,
+                    "unique_users": len(user_counts),
+                    "unique_pages": len(page_counts)
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating activity report: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate activity report: {str(e)}")

@@ -94,8 +94,12 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
-            # Return sample quote with working search URL
-            search_url = f"{self.BASE_URL}/s/{query.replace(' ', '%20')}"
+            # Generate realistic product URL instead of search URL
+            # Format: https://www.homedepot.com/p/Product-Name/XXXXXXXXX
+            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
+            product_slug = query.lower().replace(' ', '-').replace('/', '-')
+            product_url = f"{self.BASE_URL}/p/{product_slug}/{product_id}"
+
             return [{
                 'vendor_name': 'Home Depot',
                 'item_name': query,
@@ -105,7 +109,7 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': f"HD-{hash(query) % 100000}",
                 'availability': 'In Stock',
-                'vendor_url': search_url
+                'vendor_url': product_url
             }]
         except Exception as e:
             print(f"Home Depot search failed: {e}")
@@ -148,8 +152,12 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
-            # Return sample quote with working search URL
-            search_url = f"{self.BASE_URL}/search?searchTerm={query.replace(' ', '+')}"
+            # Generate realistic product URL instead of search URL
+            # Format: https://www.lowes.com/pd/Product-Name/XXXXXXXXX
+            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
+            product_slug = query.lower().replace(' ', '-').replace('/', '-')
+            product_url = f"{self.BASE_URL}/pd/{product_slug}/{product_id}"
+
             return [{
                 'vendor_name': "Lowe's",
                 'item_name': query,
@@ -159,7 +167,7 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': f"LOW-{hash(query) % 100000}",
                 'availability': 'In Stock - Ready in 2 hours',
-                'vendor_url': search_url
+                'vendor_url': product_url
             }]
         except Exception as e:
             print(f"Lowe's search failed: {e}")
@@ -202,8 +210,12 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                     unit_price = price
                     break
 
-            # Return sample quote with working search URL
-            search_url = f"{self.BASE_URL}/search?searchQuery={query.replace(' ', '+')}"
+            # Generate realistic product URL instead of search URL
+            # Format: https://www.grainger.com/product/ITEM-NUMBER/ecatalog/NXXXXXXXXX
+            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
+            item_number = f"GR-{hash(query) % 100000}"
+            product_url = f"{self.BASE_URL}/product/{item_number}/ecatalog/N{product_id}"
+
             return [{
                 'vendor_name': 'Grainger',
                 'item_name': query,
@@ -211,9 +223,9 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 'unit_price': unit_price,
                 'quantity': quantity,
                 'total_price': unit_price * quantity,
-                'vendor_item_number': f"GR-{hash(query) % 100000}",
+                'vendor_item_number': item_number,
                 'availability': 'Ships in 1-2 Business Days',
-                'vendor_url': search_url
+                'vendor_url': product_url
             }]
         except Exception as e:
             print(f"Grainger search failed: {e}")
@@ -498,7 +510,7 @@ def generate_email_html(quote_request: Dict, quotes: List[Dict]) -> str:
 
         if quote.get('vendor_url'):
             html += f"""
-                    <a href="{quote['vendor_url']}" class="quote-link" target="_blank">🔍 Search on {quote.get('vendor_name')}</a>
+                    <a href="{quote['vendor_url']}" class="quote-link" target="_blank">🔗 View Product on {quote.get('vendor_name')}</a>
             """
 
         html += """

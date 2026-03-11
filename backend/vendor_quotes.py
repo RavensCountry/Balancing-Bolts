@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 # Preferred browser order (will try each in sequence until one works)
 BROWSER_PREFERENCE = os.getenv('PREFERRED_BROWSER', 'chrome,firefox,edge').lower().split(',')
 
+# Force demo mode (skip browser automation entirely)
+# Set to 'true' to always use demo data, 'false' to attempt real scraping
+FORCE_DEMO_MODE = os.getenv('FORCE_DEMO_MODE', 'false').lower() == 'true'
+
 # Encryption key for storing passwords securely
 # In production, store this in environment variables
 ENCRYPTION_KEY = os.getenv('VENDOR_ENCRYPTION_KEY', Fernet.generate_key())
@@ -141,19 +145,35 @@ class VendorQuoteFetcher:
 
     async def get_quote(self, item_description: str, quantity: int = 1) -> List[Dict]:
         """Get quotes for an item"""
+        # Check if demo mode is forced
+        if FORCE_DEMO_MODE:
+            logger.info(f"FORCE_DEMO_MODE enabled - returning demo quote for {item_description}")
+            return self._get_demo_quote(item_description, quantity)
+
+        # Try real browser automation
         try:
             self.init_driver()
 
             if not self.is_logged_in:
                 await self.login()
 
-            return await self.search_product(item_description, quantity)
+            result = await self.search_product(item_description, quantity)
+
+            # If real scraping succeeded and returned data, use it
+            if result:
+                logger.info(f"Successfully fetched real quote for {item_description}")
+                return result
+            else:
+                # Real scraping returned empty - fall back to demo
+                logger.warning(f"Real scraping returned no results, using demo data for {item_description}")
+                return self._get_demo_quote(item_description, quantity)
+
         except RuntimeError as e:
             # Browser initialization failed - return demo data
             logger.warning(f"Browser not available, returning demo data: {e}")
             return self._get_demo_quote(item_description, quantity)
         except Exception as e:
-            logger.error(f"Error getting quote: {e}")
+            logger.error(f"Error getting quote, falling back to demo data: {e}")
             return self._get_demo_quote(item_description, quantity)
         finally:
             self.close_driver()

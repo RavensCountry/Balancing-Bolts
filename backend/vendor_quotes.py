@@ -13,13 +13,22 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
+from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.edge.service import Service as EdgeService
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Preferred browser order (will try each in sequence until one works)
+BROWSER_PREFERENCE = os.getenv('PREFERRED_BROWSER', 'chrome,firefox,edge').lower().split(',')
 
 # Encryption key for storing passwords securely
 # In production, store this in environment variables
@@ -49,23 +58,69 @@ class VendorQuoteFetcher:
         self.is_logged_in = False
 
     def init_driver(self):
-        """Initialize Selenium WebDriver with Chrome"""
+        """Initialize Selenium WebDriver with automatic browser detection and fallback"""
         if self.driver is None:
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')  # Run in background
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
-            try:
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                self.driver.implicitly_wait(10)
-            except Exception as e:
-                logger.error(f"Failed to initialize Chrome driver: {e}")
-                raise
+            # Try each browser in preference order
+            for browser in BROWSER_PREFERENCE:
+                browser = browser.strip()
+                try:
+                    if browser == 'chrome':
+                        logger.info("Attempting to initialize Chrome browser...")
+                        chrome_options = ChromeOptions()
+                        chrome_options.add_argument('--headless')
+                        chrome_options.add_argument('--no-sandbox')
+                        chrome_options.add_argument('--disable-dev-shm-usage')
+                        chrome_options.add_argument('--disable-gpu')
+                        chrome_options.add_argument('--window-size=1920,1080')
+                        chrome_options.add_argument(f'--user-agent={user_agent}')
+                        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+                        service = ChromeService(ChromeDriverManager().install())
+                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                        logger.info("Successfully initialized Chrome browser")
+                        break
+
+                    elif browser == 'firefox':
+                        logger.info("Attempting to initialize Firefox browser...")
+                        firefox_options = FirefoxOptions()
+                        firefox_options.add_argument('--headless')
+                        firefox_options.set_preference('general.useragent.override', user_agent)
+
+                        service = FirefoxService(GeckoDriverManager().install())
+                        self.driver = webdriver.Firefox(service=service, options=firefox_options)
+                        logger.info("Successfully initialized Firefox browser")
+                        break
+
+                    elif browser == 'edge':
+                        logger.info("Attempting to initialize Edge browser...")
+                        edge_options = EdgeOptions()
+                        edge_options.add_argument('--headless')
+                        edge_options.add_argument('--no-sandbox')
+                        edge_options.add_argument('--disable-dev-shm-usage')
+                        edge_options.add_argument('--disable-gpu')
+                        edge_options.add_argument('--window-size=1920,1080')
+                        edge_options.add_argument(f'--user-agent={user_agent}')
+
+                        service = EdgeService(EdgeChromiumDriverManager().install())
+                        self.driver = webdriver.Edge(service=service, options=edge_options)
+                        logger.info("Successfully initialized Edge browser")
+                        break
+
+                except WebDriverException as e:
+                    logger.warning(f"Failed to initialize {browser} browser: {e}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"Unexpected error initializing {browser}: {e}")
+                    continue
+
+            if self.driver is None:
+                error_msg = f"Failed to initialize any browser. Tried: {', '.join(BROWSER_PREFERENCE)}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            self.driver.implicitly_wait(10)
 
     def close_driver(self):
         """Close the WebDriver"""

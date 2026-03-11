@@ -1,15 +1,25 @@
 """
 Vendor quote pulling service
-Handles automated login and price fetching from vendor websites
+Handles automated login and price fetching from vendor websites using Selenium
 """
 import os
 import json
 import asyncio
+import time
 from typing import List, Dict, Optional
 from datetime import datetime
 from cryptography.fernet import Fernet
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Encryption key for storing passwords securely
 # In production, store this in environment variables
@@ -35,8 +45,36 @@ class VendorQuoteFetcher:
         except Exception:
             # In demo mode, password doesn't matter
             self.password = encrypted_password
-        self.session = requests.Session()
+        self.driver = None
         self.is_logged_in = False
+
+    def init_driver(self):
+        """Initialize Selenium WebDriver with Chrome"""
+        if self.driver is None:
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')  # Run in background
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+            try:
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                self.driver.implicitly_wait(10)
+            except Exception as e:
+                logger.error(f"Failed to initialize Chrome driver: {e}")
+                raise
+
+    def close_driver(self):
+        """Close the WebDriver"""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+            self.driver = None
 
     async def login(self) -> bool:
         """Login to vendor website - override in subclasses"""
@@ -48,187 +86,366 @@ class VendorQuoteFetcher:
 
     async def get_quote(self, item_description: str, quantity: int = 1) -> List[Dict]:
         """Get quotes for an item"""
-        if not self.is_logged_in:
-            await self.login()
+        try:
+            self.init_driver()
 
-        return await self.search_product(item_description, quantity)
+            if not self.is_logged_in:
+                await self.login()
+
+            return await self.search_product(item_description, quantity)
+        except Exception as e:
+            logger.error(f"Error getting quote: {e}")
+            return []
+        finally:
+            self.close_driver()
 
 
 class HomeDepotQuoteFetcher(VendorQuoteFetcher):
-    """Home Depot specific implementation"""
+    """Home Depot specific implementation with real web scraping"""
 
     BASE_URL = "https://www.homedepot.com"
+    LOGIN_URL = "https://www.homedepot.com/auth/view/signin"
 
     async def login(self) -> bool:
         """Login to Home Depot"""
-        # For demo: Always succeeds
-        # Real implementation would handle actual login flow
-        self.is_logged_in = True
-        return True
+        try:
+            logger.info("Logging into Home Depot...")
+            self.driver.get(self.LOGIN_URL)
+
+            # Wait for login form
+            wait = WebDriverWait(self.driver, 15)
+
+            # Find and fill email field
+            email_field = wait.until(EC.presence_of_element_located((By.ID, "Email")))
+            email_field.clear()
+            email_field.send_keys(self.username)
+
+            # Find and fill password field
+            password_field = self.driver.find_element(By.ID, "Password")
+            password_field.clear()
+            password_field.send_keys(self.password)
+
+            # Click login button
+            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            login_button.click()
+
+            # Wait for redirect to home page
+            time.sleep(3)
+
+            # Check if login was successful
+            if "myaccount" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
+                logger.info("Successfully logged into Home Depot")
+                self.is_logged_in = True
+                return True
+            else:
+                logger.warning("Home Depot login may have failed")
+                self.is_logged_in = False
+                return False
+
+        except Exception as e:
+            logger.error(f"Home Depot login failed: {e}")
+            self.is_logged_in = False
+            return False
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Home Depot for products"""
+        """Search Home Depot for products and extract real pricing"""
         try:
-            # DEMO MODE: Return sample data for testing
-            # Real implementation would use Home Depot API or web scraping
+            logger.info(f"Searching Home Depot for: {query}")
 
-            # Generate realistic sample prices based on common items
-            base_prices = {
-                'light': 8.97,
-                'bulb': 12.49,
-                'led': 15.99,
-                'filter': 24.99,
-                'paint': 34.98,
-                'lock': 19.97,
-                'faucet': 89.99,
-                'door': 199.00,
-                'battery': 6.99,
-                'cleaning': 7.49
-            }
+            # Navigate to search page
+            search_url = f"{self.BASE_URL}/s/{query.replace(' ', '%20')}"
+            self.driver.get(search_url)
 
-            # Find matching price
-            query_lower = query.lower()
-            unit_price = 25.00  # Default
-            for keyword, price in base_prices.items():
-                if keyword in query_lower:
-                    unit_price = price
-                    break
+            time.sleep(2)
 
-            # Generate realistic product URL instead of search URL
-            # Format: https://www.homedepot.com/p/Product-Name/XXXXXXXXX
-            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
-            product_slug = query.lower().replace(' ', '-').replace('/', '-')
-            product_url = f"{self.BASE_URL}/p/{product_slug}/{product_id}"
+            # Wait for search results
+            wait = WebDriverWait(self.driver, 10)
+
+            # Find first product in results
+            try:
+                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-pod")))
+            except TimeoutException:
+                logger.warning("No products found on Home Depot")
+                return []
+
+            # Extract product information
+            product_name = first_product.find_element(By.CSS_SELECTOR, "span.product-header__title").text
+
+            # Extract price
+            try:
+                price_element = first_product.find_element(By.CSS_SELECTOR, "div.price")
+                price_text = price_element.text.replace('$', '').replace(',', '').strip()
+                unit_price = float(price_text.split()[0])
+            except:
+                logger.warning("Could not extract price from Home Depot")
+                unit_price = 0.0
+
+            # Extract product URL
+            try:
+                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-pod__title")
+                product_url = product_link.get_attribute('href')
+            except:
+                product_url = search_url
+
+            # Extract SKU/Item number
+            try:
+                sku_element = first_product.find_element(By.CSS_SELECTOR, "span.product-identifier")
+                sku = sku_element.text.split('#')[-1].strip()
+            except:
+                sku = f"HD-{abs(hash(query)) % 1000000}"
+
+            # Extract availability
+            try:
+                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.fulfillment__availability")
+                availability = availability_element.text
+            except:
+                availability = "Check store availability"
 
             return [{
                 'vendor_name': 'Home Depot',
-                'item_name': query,
-                'item_description': f"{query} - Professional Grade",
+                'item_name': product_name,
+                'item_description': product_name,
                 'unit_price': unit_price,
                 'quantity': quantity,
                 'total_price': unit_price * quantity,
-                'vendor_item_number': f"HD-{hash(query) % 100000}",
-                'availability': 'In Stock',
+                'vendor_item_number': sku,
+                'availability': availability,
                 'vendor_url': product_url
             }]
+
         except Exception as e:
-            print(f"Home Depot search failed: {e}")
+            logger.error(f"Home Depot search failed: {e}")
             return []
 
 
 class LowesQuoteFetcher(VendorQuoteFetcher):
-    """Lowe's specific implementation"""
+    """Lowe's specific implementation with real web scraping"""
 
     BASE_URL = "https://www.lowes.com"
+    LOGIN_URL = "https://www.lowes.com/mylowes/login"
 
     async def login(self) -> bool:
         """Login to Lowe's"""
-        self.is_logged_in = True
-        return True
+        try:
+            logger.info("Logging into Lowe's...")
+            self.driver.get(self.LOGIN_URL)
+
+            wait = WebDriverWait(self.driver, 15)
+
+            # Find and fill email field
+            email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
+            email_field.clear()
+            email_field.send_keys(self.username)
+
+            # Find and fill password field
+            password_field = self.driver.find_element(By.ID, "password")
+            password_field.clear()
+            password_field.send_keys(self.password)
+
+            # Click login button
+            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            login_button.click()
+
+            time.sleep(3)
+
+            # Check if login was successful
+            if "mylowes" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
+                logger.info("Successfully logged into Lowe's")
+                self.is_logged_in = True
+                return True
+            else:
+                logger.warning("Lowe's login may have failed")
+                self.is_logged_in = False
+                return False
+
+        except Exception as e:
+            logger.error(f"Lowe's login failed: {e}")
+            self.is_logged_in = False
+            return False
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Lowe's for products"""
+        """Search Lowe's for products and extract real pricing"""
         try:
-            # DEMO MODE: Return sample data
-            # Lowe's prices are typically competitive with Home Depot
+            logger.info(f"Searching Lowe's for: {query}")
 
-            base_prices = {
-                'light': 9.48,
-                'bulb': 11.98,
-                'led': 14.99,
-                'filter': 23.97,
-                'paint': 32.98,
-                'lock': 18.97,
-                'faucet': 84.99,
-                'door': 189.00,
-                'battery': 7.49,
-                'cleaning': 6.99
-            }
+            # Navigate to search page
+            search_url = f"{self.BASE_URL}/search?searchTerm={query.replace(' ', '+')}"
+            self.driver.get(search_url)
 
-            query_lower = query.lower()
-            unit_price = 24.00  # Default
-            for keyword, price in base_prices.items():
-                if keyword in query_lower:
-                    unit_price = price
-                    break
+            time.sleep(2)
 
-            # Generate realistic product URL instead of search URL
-            # Format: https://www.lowes.com/pd/Product-Name/XXXXXXXXX
-            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
-            product_slug = query.lower().replace(' ', '-').replace('/', '-')
-            product_url = f"{self.BASE_URL}/pd/{product_slug}/{product_id}"
+            wait = WebDriverWait(self.driver, 10)
+
+            # Find first product in results
+            try:
+                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-card")))
+            except TimeoutException:
+                logger.warning("No products found on Lowe's")
+                return []
+
+            # Extract product information
+            product_name = first_product.find_element(By.CSS_SELECTOR, "div.product-title").text
+
+            # Extract price
+            try:
+                price_element = first_product.find_element(By.CSS_SELECTOR, "span.price-amount")
+                price_text = price_element.text.replace('$', '').replace(',', '').strip()
+                unit_price = float(price_text)
+            except:
+                logger.warning("Could not extract price from Lowe's")
+                unit_price = 0.0
+
+            # Extract product URL
+            try:
+                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-link")
+                product_url = self.BASE_URL + product_link.get_attribute('href')
+            except:
+                product_url = search_url
+
+            # Extract item number
+            try:
+                item_number = first_product.get_attribute('data-item-number')
+                if not item_number:
+                    item_number = f"LOW-{abs(hash(query)) % 1000000}"
+            except:
+                item_number = f"LOW-{abs(hash(query)) % 1000000}"
+
+            # Extract availability
+            try:
+                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.availability")
+                availability = availability_element.text
+            except:
+                availability = "Check store availability"
 
             return [{
                 'vendor_name': "Lowe's",
-                'item_name': query,
-                'item_description': f"{query} - Contractor Select",
-                'unit_price': unit_price,
-                'quantity': quantity,
-                'total_price': unit_price * quantity,
-                'vendor_item_number': f"LOW-{hash(query) % 100000}",
-                'availability': 'In Stock - Ready in 2 hours',
-                'vendor_url': product_url
-            }]
-        except Exception as e:
-            print(f"Lowe's search failed: {e}")
-            return []
-
-
-class GraingerQuoteFetcher(VendorQuoteFetcher):
-    """Grainger specific implementation"""
-
-    BASE_URL = "https://www.grainger.com"
-
-    async def login(self) -> bool:
-        """Login to Grainger"""
-        self.is_logged_in = True
-        return True
-
-    async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Grainger for products"""
-        try:
-            # DEMO MODE: Return sample data
-            # Grainger typically has higher prices but better industrial/commercial quality
-
-            base_prices = {
-                'light': 11.99,
-                'bulb': 15.49,
-                'led': 19.99,
-                'filter': 29.99,
-                'paint': 39.98,
-                'lock': 24.97,
-                'faucet': 109.99,
-                'door': 229.00,
-                'battery': 8.99,
-                'cleaning': 9.49
-            }
-
-            query_lower = query.lower()
-            unit_price = 28.00  # Default
-            for keyword, price in base_prices.items():
-                if keyword in query_lower:
-                    unit_price = price
-                    break
-
-            # Generate realistic product URL instead of search URL
-            # Format: https://www.grainger.com/product/ITEM-NUMBER/ecatalog/NXXXXXXXXX
-            product_id = abs(hash(query)) % 1000000000  # Generate consistent product ID
-            item_number = f"GR-{hash(query) % 100000}"
-            product_url = f"{self.BASE_URL}/product/{item_number}/ecatalog/N{product_id}"
-
-            return [{
-                'vendor_name': 'Grainger',
-                'item_name': query,
-                'item_description': f"{query} - Industrial Grade",
+                'item_name': product_name,
+                'item_description': product_name,
                 'unit_price': unit_price,
                 'quantity': quantity,
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
-                'availability': 'Ships in 1-2 Business Days',
+                'availability': availability,
                 'vendor_url': product_url
             }]
+
         except Exception as e:
-            print(f"Grainger search failed: {e}")
+            logger.error(f"Lowe's search failed: {e}")
+            return []
+
+
+class GraingerQuoteFetcher(VendorQuoteFetcher):
+    """Grainger specific implementation with real web scraping"""
+
+    BASE_URL = "https://www.grainger.com"
+    LOGIN_URL = "https://www.grainger.com/login"
+
+    async def login(self) -> bool:
+        """Login to Grainger"""
+        try:
+            logger.info("Logging into Grainger...")
+            self.driver.get(self.LOGIN_URL)
+
+            wait = WebDriverWait(self.driver, 15)
+
+            # Find and fill username field
+            username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
+            username_field.clear()
+            username_field.send_keys(self.username)
+
+            # Find and fill password field
+            password_field = self.driver.find_element(By.ID, "password")
+            password_field.clear()
+            password_field.send_keys(self.password)
+
+            # Click login button
+            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            login_button.click()
+
+            time.sleep(3)
+
+            # Check if login was successful
+            if "myaccount" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
+                logger.info("Successfully logged into Grainger")
+                self.is_logged_in = True
+                return True
+            else:
+                logger.warning("Grainger login may have failed")
+                self.is_logged_in = False
+                return False
+
+        except Exception as e:
+            logger.error(f"Grainger login failed: {e}")
+            self.is_logged_in = False
+            return False
+
+    async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
+        """Search Grainger for products and extract real pricing"""
+        try:
+            logger.info(f"Searching Grainger for: {query}")
+
+            # Navigate to search page
+            search_url = f"{self.BASE_URL}/search?searchQuery={query.replace(' ', '+')}"
+            self.driver.get(search_url)
+
+            time.sleep(2)
+
+            wait = WebDriverWait(self.driver, 10)
+
+            # Find first product in results
+            try:
+                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-grid-item")))
+            except TimeoutException:
+                logger.warning("No products found on Grainger")
+                return []
+
+            # Extract product information
+            product_name = first_product.find_element(By.CSS_SELECTOR, "div.product-title").text
+
+            # Extract price
+            try:
+                price_element = first_product.find_element(By.CSS_SELECTOR, "span.product-price")
+                price_text = price_element.text.replace('$', '').replace(',', '').strip()
+                unit_price = float(price_text.split('/')[0])
+            except:
+                logger.warning("Could not extract price from Grainger")
+                unit_price = 0.0
+
+            # Extract product URL
+            try:
+                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-link")
+                product_url = self.BASE_URL + product_link.get_attribute('href')
+            except:
+                product_url = search_url
+
+            # Extract Grainger item number
+            try:
+                item_element = first_product.find_element(By.CSS_SELECTOR, "span.grainger-id")
+                item_number = item_element.text
+            except:
+                item_number = f"GR-{abs(hash(query)) % 1000000}"
+
+            # Extract availability
+            try:
+                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.availability-info")
+                availability = availability_element.text
+            except:
+                availability = "Ships in 1-2 business days"
+
+            return [{
+                'vendor_name': 'Grainger',
+                'item_name': product_name,
+                'item_description': product_name,
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'total_price': unit_price * quantity,
+                'vendor_item_number': item_number,
+                'availability': availability,
+                'vendor_url': product_url
+            }]
+
+        except Exception as e:
+            logger.error(f"Grainger search failed: {e}")
             return []
 
 

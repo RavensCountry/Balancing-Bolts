@@ -14,6 +14,7 @@ class Organization(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    allow_demo_quotes: bool = Field(default=True)  # Allow fallback to demo quotes when real scraping fails
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

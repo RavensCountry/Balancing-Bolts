@@ -48,6 +48,13 @@ END
 - **Description**: When `true`, always use demo mode (skip browser automation entirely)
 - **Example**: `export FORCE_DEMO_MODE=true`
 
+### `PRODUCTION_MODE`
+- **Default**: `false`
+- **Options**: `true` or `false`
+- **Description**: When `true`, disables demo mode fallback - quote requests will fail if real scraping fails. This ensures only real pricing data is used for actual purchases.
+- **Example**: `export PRODUCTION_MODE=true`
+- **⚠️ Important**: Use this in production environments where accurate pricing is critical
+
 ### `PREFERRED_BROWSER`
 - **Default**: `chrome,firefox,edge`
 - **Description**: Comma-separated list of browsers to try (in order)
@@ -71,17 +78,29 @@ export FORCE_DEMO_MODE=true
 # Always uses demo mode, even if browser is available
 ```
 
-### Production (Real Vendor Scraping)
+### Production (Real Vendor Scraping Only - Recommended)
+```bash
+export PRODUCTION_MODE=true
+# Ensure Chrome/Firefox/Edge is installed
+# Configure vendor credentials in the UI
+# System will ONLY use real scraping - fails if browser automation fails
+# ⚠️ CRITICAL: Use this for production to ensure only real pricing is used
+```
+
+### Production (With Demo Fallback - Not Recommended for Purchases)
 ```bash
 # Ensure Chrome/Firefox/Edge is installed
 # Configure vendor credentials in the UI
-# System will automatically use real scraping
+# System will use real scraping, but fall back to demo if it fails
+# ⚠️ WARNING: Demo prices may be used, which is dangerous for actual purchases
 ```
 
 ### Production (Prefer Firefox)
 ```bash
+export PRODUCTION_MODE=true
 export PREFERRED_BROWSER=firefox,chrome,edge
 # Tries Firefox first, then Chrome, then Edge
+# Fails loudly if all browsers fail (no demo fallback)
 ```
 
 ## Supported Vendors
@@ -133,6 +152,23 @@ To enable real scraping, add vendor credentials in the UI:
 3. Mark credentials as active
 
 **Note**: Without configured credentials, the system runs in demo mode.
+
+## Organization Quote Settings
+
+Each organization can control whether demo mode fallback is allowed:
+
+1. Navigate to **Settings** → **Organization Settings** (admin only)
+2. Toggle **Allow Demo Quote Fallback**:
+   - **Enabled** (default): If real scraping fails, system falls back to demo quotes
+   - **Disabled**: If real scraping fails, quote request fails with an error
+
+**⚠️ Production Recommendation**: Disable demo quote fallback for production environments where accurate pricing is critical for purchases.
+
+**Hierarchy of Controls**:
+1. `FORCE_DEMO_MODE=true` → Always use demo (overrides everything)
+2. `PRODUCTION_MODE=true` → Never use demo fallback (overrides organization setting)
+3. Organization "Allow Demo Quote Fallback" setting → Controls per-organization behavior
+4. Default → Demo fallback is allowed
 
 ## Troubleshooting
 

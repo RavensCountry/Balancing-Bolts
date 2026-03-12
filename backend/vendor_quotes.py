@@ -34,6 +34,11 @@ BROWSER_PREFERENCE = os.getenv('PREFERRED_BROWSER', 'chrome,firefox,edge').lower
 # Set to 'true' to always use demo data, 'false' to attempt real scraping
 FORCE_DEMO_MODE = os.getenv('FORCE_DEMO_MODE', 'false').lower() == 'true'
 
+# Disable demo mode fallback in production
+# Set to 'true' to fail loudly when real scraping fails (no fallback to demo data)
+# This ensures only real pricing data is used for actual purchases
+PRODUCTION_MODE = os.getenv('PRODUCTION_MODE', 'false').lower() == 'true'
+
 # Encryption key for storing passwords securely
 # In production, store this in environment variables
 ENCRYPTION_KEY = os.getenv('VENDOR_ENCRYPTION_KEY', Fernet.generate_key())
@@ -50,7 +55,7 @@ def decrypt_password(encrypted_password: str) -> str:
 class VendorQuoteFetcher:
     """Base class for vendor-specific quote fetchers"""
 
-    def __init__(self, username: str, encrypted_password: str):
+    def __init__(self, username: str, encrypted_password: str, allow_demo_fallback: bool = True):
         self.username = username
         # Try to decrypt, but if it fails (demo mode), just use the encrypted value as-is
         try:
@@ -60,6 +65,7 @@ class VendorQuoteFetcher:
             self.password = encrypted_password
         self.driver = None
         self.is_logged_in = False
+        self.allow_demo_fallback = allow_demo_fallback  # Can this fetcher fall back to demo mode?
 
     def init_driver(self):
         """Initialize Selenium WebDriver with automatic browser detection and fallback"""
@@ -164,17 +170,40 @@ class VendorQuoteFetcher:
                 logger.info(f"Successfully fetched real quote for {item_description}")
                 return result
             else:
-                # Real scraping returned empty - fall back to demo
-                logger.warning(f"Real scraping returned no results, using demo data for {item_description}")
-                return self._get_demo_quote(item_description, quantity)
+                # Real scraping returned empty
+                # Check both PRODUCTION_MODE and allow_demo_fallback setting
+                if PRODUCTION_MODE or not self.allow_demo_fallback:
+                    # Fail loudly - no fallback to demo data
+                    error_msg = f"Failed to fetch real quote for {item_description}: No results found from vendor website"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                else:
+                    # Fall back to demo
+                    logger.warning(f"Real scraping returned no results, using demo data for {item_description}")
+                    return self._get_demo_quote(item_description, quantity)
 
         except RuntimeError as e:
-            # Browser initialization failed - return demo data
-            logger.warning(f"Browser not available, returning demo data: {e}")
-            return self._get_demo_quote(item_description, quantity)
+            # Browser initialization failed or real scraping failed
+            # Check both PRODUCTION_MODE and allow_demo_fallback setting
+            if PRODUCTION_MODE or not self.allow_demo_fallback:
+                # Fail loudly - no fallback to demo data
+                logger.error(f"Quote request failed (demo fallback disabled) - {e}")
+                raise  # Re-raise the error to fail loudly
+            else:
+                # Return demo data
+                logger.warning(f"Browser not available, returning demo data: {e}")
+                return self._get_demo_quote(item_description, quantity)
         except Exception as e:
-            logger.error(f"Error getting quote, falling back to demo data: {e}")
-            return self._get_demo_quote(item_description, quantity)
+            # Check both PRODUCTION_MODE and allow_demo_fallback setting
+            if PRODUCTION_MODE or not self.allow_demo_fallback:
+                # Fail loudly - no fallback to demo data
+                error_msg = f"Failed to fetch real quote for {item_description}: {e}"
+                logger.error(f"Quote request failed (demo fallback disabled): {error_msg}")
+                raise RuntimeError(error_msg)
+            else:
+                # Fall back to demo data
+                logger.error(f"Error getting quote, falling back to demo data: {e}")
+                return self._get_demo_quote(item_description, quantity)
         finally:
             self.close_driver()
 
@@ -322,13 +351,13 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
 
         return [{
             'vendor_name': 'Home Depot',
-            'item_name': query,
-            'item_description': f"{query} - Professional Grade",
+            'item_name': f"⚠️ DEMO: {query}",
+            'item_description': f"⚠️ WARNING: This is SIMULATED pricing data, NOT real! Do not use for actual purchases. ({query} - Professional Grade)",
             'unit_price': unit_price,
             'quantity': quantity,
             'total_price': unit_price * quantity,
-            'vendor_item_number': f"HD-{hash(query) % 100000}",
-            'availability': 'In Stock',
+            'vendor_item_number': f"DEMO-HD-{hash(query) % 100000}",
+            'availability': '⚠️ DEMO MODE - Not Real Availability',
             'vendor_url': product_url
         }]
 
@@ -469,13 +498,13 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
 
         return [{
             'vendor_name': "Lowe's",
-            'item_name': query,
-            'item_description': f"{query} - Contractor Select",
+            'item_name': f"⚠️ DEMO: {query}",
+            'item_description': f"⚠️ WARNING: This is SIMULATED pricing data, NOT real! Do not use for actual purchases. ({query} - Contractor Select)",
             'unit_price': unit_price,
             'quantity': quantity,
             'total_price': unit_price * quantity,
-            'vendor_item_number': f"LOW-{hash(query) % 100000}",
-            'availability': 'In Stock - Ready in 2 hours',
+            'vendor_item_number': f"DEMO-LOW-{hash(query) % 100000}",
+            'availability': '⚠️ DEMO MODE - Not Real Availability',
             'vendor_url': product_url
         }]
 
@@ -610,18 +639,18 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 break
 
         product_id = abs(hash(query)) % 1000000000
-        item_number = f"GR-{hash(query) % 100000}"
+        item_number = f"DEMO-GR-{hash(query) % 100000}"
         product_url = f"{self.BASE_URL}/product/{item_number}/ecatalog/N{product_id}"
 
         return [{
             'vendor_name': 'Grainger',
-            'item_name': query,
-            'item_description': f"{query} - Industrial Grade",
+            'item_name': f"⚠️ DEMO: {query}",
+            'item_description': f"⚠️ WARNING: This is SIMULATED pricing data, NOT real! Do not use for actual purchases. ({query} - Industrial Grade)",
             'unit_price': unit_price,
             'quantity': quantity,
             'total_price': unit_price * quantity,
             'vendor_item_number': item_number,
-            'availability': 'Ships in 1-2 Business Days',
+            'availability': '⚠️ DEMO MODE - Not Real Availability',
             'vendor_url': product_url
         }]
 
@@ -633,18 +662,19 @@ VENDOR_FETCHERS = {
     "Grainger": GraingerQuoteFetcher,
 }
 
-def get_vendor_fetcher(vendor_name: str, username: str, encrypted_password: str) -> Optional[VendorQuoteFetcher]:
+def get_vendor_fetcher(vendor_name: str, username: str, encrypted_password: str, allow_demo_fallback: bool = True) -> Optional[VendorQuoteFetcher]:
     """Get the appropriate fetcher for a vendor"""
     fetcher_class = VENDOR_FETCHERS.get(vendor_name)
     if fetcher_class:
-        return fetcher_class(username, encrypted_password)
+        return fetcher_class(username, encrypted_password, allow_demo_fallback)
     return None
 
 
 async def fetch_quotes_from_vendors(
     item_description: str,
     quantity: int,
-    vendor_credentials: List[Dict]
+    vendor_credentials: List[Dict],
+    allow_demo_fallback: bool = True
 ) -> List[Dict]:
     """
     Fetch quotes from multiple vendors concurrently
@@ -653,6 +683,7 @@ async def fetch_quotes_from_vendors(
         item_description: What to search for
         quantity: How many
         vendor_credentials: List of {vendor_name, username, encrypted_password}
+        allow_demo_fallback: Whether to allow fallback to demo quotes if real scraping fails
 
     Returns:
         List of quote dictionaries
@@ -663,7 +694,8 @@ async def fetch_quotes_from_vendors(
         fetcher = get_vendor_fetcher(
             cred['vendor_name'],
             cred['username'],
-            cred['encrypted_password']
+            cred['encrypted_password'],
+            allow_demo_fallback
         )
 
         if fetcher:

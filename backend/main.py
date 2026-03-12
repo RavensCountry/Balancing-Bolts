@@ -1713,6 +1713,14 @@ async def fetch_quotes(
         s.add(quote_request)
         s.commit()
 
+        # Get the user's organization to check allow_demo_quotes setting
+        allow_demo_fallback = True  # Default to allowing demo fallback
+        if current_user.organization_id:
+            org = s.exec(select(Organization).where(Organization.id == current_user.organization_id)).first()
+            if org:
+                allow_demo_fallback = org.allow_demo_quotes
+                logger.info(f"Organization '{org.name}' allow_demo_quotes setting: {allow_demo_fallback}")
+
         # Get all active vendor credentials
         credentials = s.exec(
             select(VendorCredential).where(VendorCredential.is_active == True)
@@ -1742,7 +1750,8 @@ async def fetch_quotes(
             quotes_data = await vendor_quotes.fetch_quotes_from_vendors(
                 quote_request.item_description,
                 quote_request.quantity,
-                creds_data
+                creds_data,
+                allow_demo_fallback
             )
 
             logger.info(f"Received {len(quotes_data)} quotes from vendors")

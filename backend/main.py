@@ -260,6 +260,12 @@ try:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(property_id, unit_number)
         );""",
+        # Add allow_demo_quotes to organization table for production safety
+        "ALTER TABLE organization ADD COLUMN IF NOT EXISTS allow_demo_quotes BOOLEAN DEFAULT TRUE;",
+        # Add missing ActivityLog columns
+        "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45);",
+        "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS page VARCHAR(255);",
+        "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS target VARCHAR(255);",
     ]
 
     with engine.connect() as conn:

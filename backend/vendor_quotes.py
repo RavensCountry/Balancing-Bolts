@@ -97,6 +97,12 @@ class VendorQuoteFetcher:
                             if os.path.exists(actual_driver):
                                 driver_path = actual_driver
 
+                        # Ensure chromedriver has execute permissions
+                        import os
+                        import stat
+                        if os.path.exists(driver_path):
+                            os.chmod(driver_path, os.stat(driver_path).st_mode | stat.S_IEXEC)
+
                         service = ChromeService(driver_path)
                         self.driver = webdriver.Chrome(service=service, options=chrome_options)
                         logger.info("Successfully initialized Chrome browser")

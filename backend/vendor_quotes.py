@@ -87,7 +87,17 @@ class VendorQuoteFetcher:
                         chrome_options.add_argument(f'--user-agent={user_agent}')
                         chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-                        service = ChromeService(ChromeDriverManager().install())
+                        # Get the driver path and fix the webdriver-manager bug
+                        driver_path = ChromeDriverManager().install()
+                        # If the path points to THIRD_PARTY_NOTICES, find the actual chromedriver
+                        if 'THIRD_PARTY_NOTICES' in driver_path:
+                            import os
+                            driver_dir = os.path.dirname(driver_path)
+                            actual_driver = os.path.join(driver_dir, 'chromedriver')
+                            if os.path.exists(actual_driver):
+                                driver_path = actual_driver
+
+                        service = ChromeService(driver_path)
                         self.driver = webdriver.Chrome(service=service, options=chrome_options)
                         logger.info("Successfully initialized Chrome browser")
                         break

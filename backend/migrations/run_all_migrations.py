@@ -16,6 +16,7 @@ def run_all_migrations():
         ("Create missing tables", "backend.migrations.create_missing_tables"),
         ("Add activity log columns", "backend.migrations.add_activity_log_columns"),
         ("Add allow_demo_quotes to organization", "backend.migrations.add_allow_demo_quotes"),
+        ("Add notes column to property", "backend.migrations.add_property_notes"),
     ]
 
     for name, module_path in migrations:

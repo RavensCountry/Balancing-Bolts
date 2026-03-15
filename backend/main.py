@@ -1637,6 +1637,62 @@ def delete_vendor_credential(
         return {"status": "success"}
 
 
+@app.put('/api/vendors/credentials/{credential_id}')
+async def update_vendor_credential(
+    credential_id: int,
+    vendor_name: str = Form(...),
+    vendor_url: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(None),  # Optional - only update if provided
+    property_id: int = Form(None),
+    current_user=Depends(auth.require_role('manager'))
+):
+    """Update vendor login credentials (manager/admin only)"""
+    with get_session() as s:
+        credential = s.exec(
+            select(VendorCredential).where(VendorCredential.id == credential_id)
+        ).first()
+
+        if not credential:
+            raise HTTPException(status_code=404, detail="Credential not found")
+
+        # Only the creator or admin can update
+        if credential.user_id != current_user.id and current_user.role != 'admin':
+            raise HTTPException(status_code=403, detail="Not authorized to update this credential")
+
+        # Check if property exists if provided
+        if property_id:
+            prop = s.exec(select(Property).where(Property.id == property_id)).first()
+            if not prop:
+                raise HTTPException(status_code=404, detail="Property not found")
+
+        # Update fields
+        credential.vendor_name = vendor_name
+        credential.vendor_url = vendor_url
+        credential.username = username
+        credential.property_id = property_id
+
+        # Only update password if provided
+        if password:
+            credential.encrypted_password = vendor_quotes.encrypt_password(password)
+
+        s.add(credential)
+        s.commit()
+        s.refresh(credential)
+
+        return {
+            "status": "success",
+            "credential": {
+                "id": credential.id,
+                "vendor_name": credential.vendor_name,
+                "vendor_url": credential.vendor_url,
+                "username": credential.username,
+                "property_id": credential.property_id,
+                "created_at": credential.created_at.isoformat()
+            }
+        }
+
+
 @app.post('/api/quotes/request')
 async def create_quote_request(
     item_description: str = Form(...),

@@ -5531,10 +5531,16 @@
                     </span>
                   </p>
                 </div>
-                <button class="btn-danger" onclick="deleteVendorCredential(${cred.id})"
-                        style="padding: 0.5rem 1rem; font-size: 0.875rem;">
-                  Delete
-                </button>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  <button class="btn-primary" onclick="editVendorCredential(${cred.id}, '${cred.vendor_name}', '${cred.username}', ${cred.property_id || 'null'})"
+                          style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                    Edit
+                  </button>
+                  <button class="btn-danger" onclick="deleteVendorCredential(${cred.id})"
+                          style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
           `;
@@ -5547,11 +5553,25 @@
       async function addVendorCredential(event) {
         event.preventDefault();
 
+        const form = document.getElementById('addVendorForm');
+        const editingId = form.dataset.editingId;
+        const isEditing = !!editingId;
+
         const formData = new FormData();
         formData.append('vendor_name', document.getElementById('newVendorName').value);
         formData.append('vendor_url', document.getElementById('newVendorUrl').value);
         formData.append('username', document.getElementById('newVendorUsername').value);
-        formData.append('password', document.getElementById('newVendorPassword').value);
+
+        const password = document.getElementById('newVendorPassword').value;
+        if (password) {
+          formData.append('password', password);
+        } else if (isEditing) {
+          // If editing and no password provided, keep existing password
+          // Backend should handle this
+        } else {
+          alert('Password is required for new credentials');
+          return;
+        }
 
         const propertyId = document.getElementById('newVendorProperty').value;
         if (propertyId) {
@@ -5559,22 +5579,62 @@
         }
 
         try {
-          const res = await fetch('/api/vendors/credentials', {
-            method: 'POST',
+          const url = isEditing ? `/api/vendors/credentials/${editingId}` : '/api/vendors/credentials';
+          const method = isEditing ? 'PUT' : 'POST';
+
+          const res = await fetch(url, {
+            method: method,
             headers: authHeaders(),
             body: formData
           });
 
           if (res.ok) {
-            alert('Vendor credentials saved successfully!');
-            document.getElementById('addVendorForm').reset();
+            alert(isEditing ? 'Vendor credentials updated successfully!' : 'Vendor credentials saved successfully!');
+
+            // Reset form
+            form.reset();
+            delete form.dataset.editingId;
+
+            // Reset form title and button
+            const formTitle = document.querySelector('#vendorCredentialsSection h4:last-of-type');
+            formTitle.textContent = 'Add New Vendor';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+              submitBtn.textContent = 'Add Vendor';
+            }
+
             await loadVendorCredentials();
           } else {
             const data = await res.json();
-            alert(`Failed to save credentials: ${data.detail || 'Unknown error'}`);
+            alert(`Failed to ${isEditing ? 'update' : 'save'} credentials: ${data.detail || 'Unknown error'}`);
           }
         } catch (e) {
           alert(`Error: ${e.message}`);
+        }
+      }
+
+      async function editVendorCredential(credentialId, vendorName, username, propertyId) {
+        // Populate the form with existing values
+        document.getElementById('newVendorName').value = vendorName;
+        document.getElementById('newVendorUsername').value = username;
+        if (propertyId) {
+          document.getElementById('newVendorProperty').value = propertyId;
+        }
+
+        // Scroll to the form
+        document.querySelector('#addVendorForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Change form title and button to indicate editing
+        const formTitle = document.querySelector('#vendorCredentialsSection h4:last-of-type');
+        formTitle.textContent = 'Edit Vendor Credential';
+
+        // Store credential ID for update
+        document.getElementById('addVendorForm').dataset.editingId = credentialId;
+
+        // Change submit button text
+        const submitBtn = document.querySelector('#addVendorForm button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.textContent = 'Update Credential';
         }
       }
 

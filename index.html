@@ -5514,6 +5514,10 @@
             (properties.find(p => p.id === cred.property_id)?.name || 'Unknown Property') :
             'All Properties';
 
+          // Escape strings for use in HTML attributes
+          const escapedVendorName = cred.vendor_name.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+          const escapedUsername = cred.username.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+
           html += `
             <div class="card" style="background: var(--primary-light); padding: 1rem;">
               <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -5532,7 +5536,7 @@
                   </p>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                  <button class="btn-primary" onclick="editVendorCredential(${cred.id}, '${cred.vendor_name}', '${cred.username}', ${cred.property_id || 'null'})"
+                  <button class="btn-primary" data-cred-id="${cred.id}" data-vendor-name="${escapedVendorName}" data-username="${escapedUsername}" data-property-id="${cred.property_id || ''}" onclick="editVendorCredential(this)"
                           style="padding: 0.5rem 1rem; font-size: 0.875rem;">
                     Edit
                   </button>
@@ -5613,13 +5617,24 @@
         }
       }
 
-      async function editVendorCredential(credentialId, vendorName, username, propertyId) {
+      function editVendorCredential(buttonElement) {
+        // Read data from button attributes
+        const credentialId = buttonElement.getAttribute('data-cred-id');
+        const vendorName = buttonElement.getAttribute('data-vendor-name').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+        const username = buttonElement.getAttribute('data-username').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+        const propertyId = buttonElement.getAttribute('data-property-id');
+
         // Populate the form with existing values
         document.getElementById('newVendorName').value = vendorName;
         document.getElementById('newVendorUsername').value = username;
         if (propertyId) {
           document.getElementById('newVendorProperty').value = propertyId;
+        } else {
+          document.getElementById('newVendorProperty').value = '';
         }
+
+        // Clear password field (optional when editing)
+        document.getElementById('newVendorPassword').value = '';
 
         // Scroll to the form
         document.querySelector('#addVendorForm').scrollIntoView({ behavior: 'smooth', block: 'center' });

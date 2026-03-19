@@ -390,31 +390,90 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             logger.info("Logging into Lowe's...")
             self.driver.get(self.LOGIN_URL)
 
-            wait = WebDriverWait(self.driver, 15)
+            wait = WebDriverWait(self.driver, 20)
 
-            # Find and fill email field
-            email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
+            # Find and fill email field - try multiple selectors
+            email_field = None
+            email_selectors = [
+                (By.ID, "email"),
+                (By.NAME, "email"),
+                (By.CSS_SELECTOR, "input[type='email']"),
+                (By.XPATH, "//input[@type='email' or @name='email']")
+            ]
+
+            for selector_type, selector_value in email_selectors:
+                try:
+                    email_field = wait.until(EC.presence_of_element_located((selector_type, selector_value)))
+                    logger.info(f"Found email field using: {selector_type}")
+                    break
+                except:
+                    continue
+
+            if not email_field:
+                raise Exception("Could not find email field")
+
             email_field.clear()
             email_field.send_keys(self.username)
+            time.sleep(1)
 
-            # Find and fill password field
-            password_field = self.driver.find_element(By.ID, "password")
+            # Find and fill password field - try multiple selectors
+            password_field = None
+            password_selectors = [
+                (By.ID, "password"),
+                (By.NAME, "password"),
+                (By.CSS_SELECTOR, "input[type='password']"),
+                (By.XPATH, "//input[@type='password' or @name='password']")
+            ]
+
+            for selector_type, selector_value in password_selectors:
+                try:
+                    password_field = self.driver.find_element(selector_type, selector_value)
+                    logger.info(f"Found password field using: {selector_type}")
+                    break
+                except:
+                    continue
+
+            if not password_field:
+                raise Exception("Could not find password field")
+
             password_field.clear()
             password_field.send_keys(self.password)
+            time.sleep(1)
 
-            # Click login button
-            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            # Click login button - try multiple selectors
+            login_button = None
+            button_selectors = [
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.XPATH, "//button[contains(text(), 'Sign In') or contains(text(), 'Log In')]"),
+                (By.CSS_SELECTOR, "button.btn-primary"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.XPATH, "//button[@type='submit']")
+            ]
+
+            for selector_type, selector_value in button_selectors:
+                try:
+                    login_button = self.driver.find_element(selector_type, selector_value)
+                    logger.info(f"Found login button using: {selector_type}")
+                    break
+                except:
+                    continue
+
+            if not login_button:
+                raise Exception("Could not find login button")
+
             login_button.click()
-
-            time.sleep(3)
+            time.sleep(5)
 
             # Check if login was successful
-            if "mylowes" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
+            current_url = self.driver.current_url
+            logger.info(f"After login attempt, current URL: {current_url}")
+
+            if "mylowes" in current_url or current_url == self.BASE_URL + "/" or "account" in current_url:
                 logger.info("Successfully logged into Lowe's")
                 self.is_logged_in = True
                 return True
             else:
-                logger.warning("Lowe's login may have failed")
+                logger.warning(f"Lowe's login may have failed - URL: {current_url}")
                 self.is_logged_in = False
                 return False
 
@@ -432,50 +491,119 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             search_url = f"{self.BASE_URL}/search?searchTerm={query.replace(' ', '+')}"
             self.driver.get(search_url)
 
-            time.sleep(2)
+            time.sleep(3)
 
-            wait = WebDriverWait(self.driver, 10)
+            wait = WebDriverWait(self.driver, 15)
 
-            # Find first product in results
-            try:
-                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-card")))
-            except TimeoutException:
+            # Find first product in results - try multiple selectors
+            first_product = None
+            product_selectors = [
+                (By.CSS_SELECTOR, "div.product-card"),
+                (By.CSS_SELECTOR, "div[data-itemid]"),
+                (By.CSS_SELECTOR, "article.product"),
+                (By.CSS_SELECTOR, "div.product-pod"),
+                (By.XPATH, "//div[contains(@class, 'product')]")
+            ]
+
+            for selector_type, selector_value in product_selectors:
+                try:
+                    first_product = wait.until(EC.presence_of_element_located((selector_type, selector_value)))
+                    logger.info(f"Found product using: {selector_type}")
+                    break
+                except TimeoutException:
+                    continue
+
+            if not first_product:
                 logger.warning("No products found on Lowe's")
                 return []
 
-            # Extract product information
-            product_name = first_product.find_element(By.CSS_SELECTOR, "div.product-title").text
+            # Extract product information - try multiple selectors
+            product_name = "Unknown Product"
+            name_selectors = [
+                (By.CSS_SELECTOR, "div.product-title"),
+                (By.CSS_SELECTOR, "h2.product-title"),
+                (By.CSS_SELECTOR, "span.product-title"),
+                (By.XPATH, ".//*[contains(@class, 'title')]")
+            ]
 
-            # Extract price
-            try:
-                price_element = first_product.find_element(By.CSS_SELECTOR, "span.price-amount")
-                price_text = price_element.text.replace('$', '').replace(',', '').strip()
-                unit_price = float(price_text)
-            except:
-                logger.warning("Could not extract price from Lowe's")
-                unit_price = 0.0
+            for selector_type, selector_value in name_selectors:
+                try:
+                    element = first_product.find_element(selector_type, selector_value)
+                    product_name = element.text.strip()
+                    if product_name:
+                        break
+                except:
+                    continue
+
+            # Extract price - try multiple selectors
+            unit_price = 0.0
+            price_selectors = [
+                (By.CSS_SELECTOR, "span.price-amount"),
+                (By.CSS_SELECTOR, "span.price"),
+                (By.CSS_SELECTOR, "div.price"),
+                (By.XPATH, ".//*[contains(@class, 'price')]")
+            ]
+
+            for selector_type, selector_value in price_selectors:
+                try:
+                    price_element = first_product.find_element(selector_type, selector_value)
+                    price_text = price_element.text.replace('$', '').replace(',', '').strip()
+                    # Extract just the number
+                    import re
+                    price_match = re.search(r'(\d+\.?\d*)', price_text)
+                    if price_match:
+                        unit_price = float(price_match.group(1))
+                        logger.info(f"Extracted price: ${unit_price}")
+                        break
+                except:
+                    continue
 
             # Extract product URL
-            try:
-                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-link")
-                product_url = self.BASE_URL + product_link.get_attribute('href')
-            except:
-                product_url = search_url
+            product_url = search_url
+            link_selectors = [
+                (By.CSS_SELECTOR, "a.product-link"),
+                (By.CSS_SELECTOR, "a[href*='/pd/']"),
+                (By.TAG_NAME, "a")
+            ]
+
+            for selector_type, selector_value in link_selectors:
+                try:
+                    product_link = first_product.find_element(selector_type, selector_value)
+                    href = product_link.get_attribute('href')
+                    if href:
+                        product_url = href if href.startswith('http') else self.BASE_URL + href
+                        break
+                except:
+                    continue
 
             # Extract item number
+            item_number = f"LOW-{abs(hash(query)) % 1000000}"
             try:
-                item_number = first_product.get_attribute('data-item-number')
-                if not item_number:
-                    item_number = f"LOW-{abs(hash(query)) % 1000000}"
+                item_num = first_product.get_attribute('data-itemid') or first_product.get_attribute('data-item-number')
+                if item_num:
+                    item_number = item_num
             except:
-                item_number = f"LOW-{abs(hash(query)) % 1000000}"
+                pass
 
             # Extract availability
-            try:
-                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.availability")
-                availability = availability_element.text
-            except:
-                availability = "Check store availability"
+            availability = "Check store availability"
+            availability_selectors = [
+                (By.CSS_SELECTOR, "div.availability"),
+                (By.CSS_SELECTOR, "span.availability"),
+                (By.XPATH, ".//*[contains(@class, 'availability')]")
+            ]
+
+            for selector_type, selector_value in availability_selectors:
+                try:
+                    availability_element = first_product.find_element(selector_type, selector_value)
+                    avail_text = availability_element.text.strip()
+                    if avail_text:
+                        availability = avail_text
+                        break
+                except:
+                    continue
+
+            logger.info(f"Found product: {product_name} - ${unit_price}")
 
             return [{
                 'vendor_name': "Lowe's",

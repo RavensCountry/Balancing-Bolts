@@ -447,31 +447,71 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             if not password_field:
                 logger.info("Password field not visible - trying two-step login flow")
 
-                # Look for continue/next button
+                # Log all buttons on page for debugging
+                try:
+                    all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                    logger.info(f"Found {len(all_buttons)} buttons on page")
+                    for i, btn in enumerate(all_buttons[:5]):  # Log first 5 buttons
+                        try:
+                            btn_text = btn.text.strip()[:50] if btn.text else "(no text)"
+                            btn_type = btn.get_attribute("type") or "(no type)"
+                            btn_class = btn.get_attribute("class") or "(no class)"
+                            logger.info(f"Button {i}: text='{btn_text}', type='{btn_type}', class='{btn_class[:50]}'")
+                        except:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Could not enumerate buttons: {e}")
+
+                # Look for continue/next button with expanded selectors
                 continue_button = None
                 continue_selectors = [
-                    (By.XPATH, "//button[contains(text(), 'Continue')]"),
-                    (By.XPATH, "//button[contains(text(), 'Next')]"),
+                    # Text-based selectors
+                    (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]"),
+                    (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]"),
+                    (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in')]"),
+                    (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log in')]"),
+                    (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit')]"),
+                    # Type-based selectors
                     (By.CSS_SELECTOR, "button[type='submit']"),
                     (By.XPATH, "//button[@type='submit']"),
+                    (By.CSS_SELECTOR, "input[type='submit']"),
+                    # Class-based selectors
                     (By.CSS_SELECTOR, "button.continue-btn"),
-                    (By.CSS_SELECTOR, "input[type='submit']")
+                    (By.CSS_SELECTOR, "button.submit-btn"),
+                    (By.CSS_SELECTOR, "button.btn-primary"),
+                    (By.CSS_SELECTOR, "button.primary"),
+                    (By.CSS_SELECTOR, "button[class*='submit']"),
+                    (By.CSS_SELECTOR, "button[class*='continue']"),
+                    (By.CSS_SELECTOR, "button[class*='primary']"),
+                    # Generic button in form
+                    (By.XPATH, "//form//button"),
                 ]
 
                 for selector_type, selector_value in continue_selectors:
                     try:
-                        continue_button = self.driver.find_element(selector_type, selector_value)
-                        if continue_button.is_displayed():
-                            logger.info(f"Found continue button using: {selector_type}")
+                        elements = self.driver.find_elements(selector_type, selector_value)
+                        for elem in elements:
+                            if elem.is_displayed() and elem.is_enabled():
+                                continue_button = elem
+                                logger.info(f"Found continue button using: {selector_type} = {selector_value}")
+                                break
+                        if continue_button:
                             break
-                        else:
-                            continue_button = None
-                    except:
+                    except Exception as e:
                         continue
 
                 if continue_button:
-                    continue_button.click()
-                    logger.info("Clicked continue button, waiting for password field...")
+                    try:
+                        # Try regular click first
+                        continue_button.click()
+                        logger.info("Clicked continue button, waiting for password field...")
+                    except Exception as e:
+                        logger.warning(f"Regular click failed: {e}, trying JavaScript click")
+                        try:
+                            self.driver.execute_script("arguments[0].click();", continue_button)
+                            logger.info("JavaScript click succeeded")
+                        except Exception as e2:
+                            logger.error(f"JavaScript click also failed: {e2}")
                     time.sleep(3)
 
                     # Now look for password field again
@@ -482,6 +522,25 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                             break
                         except:
                             continue
+                else:
+                    # No continue button found - try pressing Enter on email field
+                    logger.info("No continue button found, trying Enter key on email field")
+                    try:
+                        from selenium.webdriver.common.keys import Keys
+                        email_field.send_keys(Keys.RETURN)
+                        logger.info("Pressed Enter on email field")
+                        time.sleep(3)
+
+                        # Look for password field again
+                        for selector_type, selector_value in password_selectors:
+                            try:
+                                password_field = wait.until(EC.element_to_be_clickable((selector_type, selector_value)))
+                                logger.info(f"Found password field after Enter key using: {selector_type}")
+                                break
+                            except:
+                                continue
+                    except Exception as e:
+                        logger.error(f"Enter key approach failed: {e}")
 
             if not password_field:
                 # Log page source for debugging
@@ -497,30 +556,53 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             login_button = None
             button_selectors = [
                 (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.XPATH, "//button[contains(text(), 'Sign In')]"),
-                (By.XPATH, "//button[contains(text(), 'Log In')]"),
-                (By.XPATH, "//button[contains(text(), 'Sign in')]"),
+                (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in')]"),
+                (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log in')]"),
+                (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]"),
+                (By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit')]"),
                 (By.CSS_SELECTOR, "button.btn-primary"),
+                (By.CSS_SELECTOR, "button.primary"),
+                (By.CSS_SELECTOR, "button[class*='primary']"),
+                (By.CSS_SELECTOR, "button[class*='submit']"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.XPATH, "//button[@type='submit']")
+                (By.XPATH, "//button[@type='submit']"),
+                (By.XPATH, "//form//button"),
             ]
 
             for selector_type, selector_value in button_selectors:
                 try:
-                    login_button = self.driver.find_element(selector_type, selector_value)
-                    if login_button.is_displayed():
-                        logger.info(f"Found login button using: {selector_type}")
+                    elements = self.driver.find_elements(selector_type, selector_value)
+                    for elem in elements:
+                        if elem.is_displayed() and elem.is_enabled():
+                            login_button = elem
+                            logger.info(f"Found login button using: {selector_type}")
+                            break
+                    if login_button:
                         break
-                    else:
-                        login_button = None
                 except:
                     continue
 
-            if not login_button:
-                raise Exception("Could not find login button")
-
-            login_button.click()
-            logger.info("Clicked login button, waiting for redirect...")
+            if login_button:
+                try:
+                    login_button.click()
+                    logger.info("Clicked login button, waiting for redirect...")
+                except Exception as e:
+                    logger.warning(f"Regular click failed: {e}, trying JavaScript click")
+                    try:
+                        self.driver.execute_script("arguments[0].click();", login_button)
+                        logger.info("JavaScript click succeeded")
+                    except Exception as e2:
+                        logger.error(f"JavaScript click also failed: {e2}")
+            else:
+                # No login button found - try pressing Enter on password field
+                logger.info("No login button found, trying Enter key on password field")
+                try:
+                    from selenium.webdriver.common.keys import Keys
+                    password_field.send_keys(Keys.RETURN)
+                    logger.info("Pressed Enter on password field")
+                except Exception as e:
+                    logger.error(f"Enter key approach failed: {e}")
+                    raise Exception("Could not find login button and Enter key failed")
             time.sleep(5)
 
             # Check if login was successful

@@ -89,19 +89,44 @@ class VendorQuoteFetcher:
 
                         # Get the driver path and fix the webdriver-manager bug
                         driver_path = ChromeDriverManager().install()
+                        logger.info(f"ChromeDriverManager returned path: {driver_path}")
+
                         # If the path points to THIRD_PARTY_NOTICES, find the actual chromedriver
-                        if 'THIRD_PARTY_NOTICES' in driver_path:
+                        if 'THIRD_PARTY_NOTICES' in driver_path or not driver_path.endswith('chromedriver'):
                             import os
+                            import glob
                             driver_dir = os.path.dirname(driver_path)
-                            actual_driver = os.path.join(driver_dir, 'chromedriver')
-                            if os.path.exists(actual_driver):
-                                driver_path = actual_driver
+                            logger.info(f"Looking for chromedriver in: {driver_dir}")
+
+                            # Try different possible chromedriver names
+                            possible_names = ['chromedriver', 'chromedriver.exe', 'chromedriver-linux64', 'chromedriver-mac-x64']
+                            for name in possible_names:
+                                actual_driver = os.path.join(driver_dir, name)
+                                if os.path.exists(actual_driver) and os.path.isfile(actual_driver):
+                                    driver_path = actual_driver
+                                    logger.info(f"Found chromedriver at: {driver_path}")
+                                    break
+                            else:
+                                # List all files in directory for debugging
+                                try:
+                                    files = os.listdir(driver_dir)
+                                    logger.info(f"Files in {driver_dir}: {files}")
+                                    # Look for any file containing 'chromedriver' that's not THIRD_PARTY
+                                    for f in files:
+                                        if 'chromedriver' in f.lower() and 'third_party' not in f.lower() and 'notices' not in f.lower():
+                                            candidate = os.path.join(driver_dir, f)
+                                            if os.path.isfile(candidate):
+                                                driver_path = candidate
+                                                logger.info(f"Found chromedriver candidate: {driver_path}")
+                                                break
+                                except Exception as e:
+                                    logger.error(f"Could not list driver directory: {e}")
 
                         # Ensure chromedriver has execute permissions
-                        import os
                         import stat
                         if os.path.exists(driver_path):
                             os.chmod(driver_path, os.stat(driver_path).st_mode | stat.S_IEXEC)
+                            logger.info(f"Set execute permissions on: {driver_path}")
 
                         service = ChromeService(driver_path)
                         self.driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -447,20 +472,44 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             if not password_field:
                 logger.info("Password field not visible - trying two-step login flow")
 
+                # Log page info for debugging
+                try:
+                    logger.info(f"Current URL: {self.driver.current_url}")
+                    logger.info(f"Page title: {self.driver.title}")
+                except Exception as e:
+                    logger.warning(f"Could not get page info: {e}")
+
                 # Log all buttons on page for debugging
                 try:
                     all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
-                    logger.info(f"Found {len(all_buttons)} buttons on page")
-                    for i, btn in enumerate(all_buttons[:5]):  # Log first 5 buttons
+                    logger.info(f"DEBUG: Found {len(all_buttons)} buttons on page")
+                    for i, btn in enumerate(all_buttons[:10]):  # Log first 10 buttons
                         try:
                             btn_text = btn.text.strip()[:50] if btn.text else "(no text)"
                             btn_type = btn.get_attribute("type") or "(no type)"
                             btn_class = btn.get_attribute("class") or "(no class)"
-                            logger.info(f"Button {i}: text='{btn_text}', type='{btn_type}', class='{btn_class[:50]}'")
-                        except:
-                            pass
+                            btn_displayed = btn.is_displayed()
+                            logger.info(f"DEBUG Button {i}: text='{btn_text}', type='{btn_type}', visible={btn_displayed}, class='{btn_class[:60]}'")
+                        except Exception as btn_err:
+                            logger.warning(f"DEBUG Button {i}: Could not inspect - {btn_err}")
                 except Exception as e:
                     logger.warning(f"Could not enumerate buttons: {e}")
+
+                # Also log all input fields
+                try:
+                    all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+                    logger.info(f"DEBUG: Found {len(all_inputs)} input fields on page")
+                    for i, inp in enumerate(all_inputs[:10]):
+                        try:
+                            inp_type = inp.get_attribute("type") or "(no type)"
+                            inp_name = inp.get_attribute("name") or "(no name)"
+                            inp_id = inp.get_attribute("id") or "(no id)"
+                            inp_displayed = inp.is_displayed()
+                            logger.info(f"DEBUG Input {i}: type='{inp_type}', name='{inp_name}', id='{inp_id}', visible={inp_displayed}")
+                        except Exception as inp_err:
+                            logger.warning(f"DEBUG Input {i}: Could not inspect - {inp_err}")
+                except Exception as e:
+                    logger.warning(f"Could not enumerate inputs: {e}")
 
                 # Look for continue/next button with expanded selectors
                 continue_button = None
@@ -628,34 +677,53 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
         try:
             logger.info(f"Searching Lowe's for: {query}")
 
-            # Navigate to search page
-            search_url = f"{self.BASE_URL}/search?searchTerm={query.replace(' ', '+')}"
+            # Navigate to search page - use URL encoding for special chars
+            from urllib.parse import quote_plus
+            search_url = f"{self.BASE_URL}/search?searchTerm={quote_plus(query)}"
+            logger.info(f"Navigating to: {search_url}")
             self.driver.get(search_url)
 
-            time.sleep(3)
+            time.sleep(5)  # Increased wait time for page load
 
-            wait = WebDriverWait(self.driver, 15)
+            # Log page info for debugging
+            logger.info(f"Search page URL: {self.driver.current_url}")
+            logger.info(f"Search page title: {self.driver.title}")
+
+            wait = WebDriverWait(self.driver, 20)  # Increased timeout
 
             # Find first product in results - try multiple selectors
             first_product = None
             product_selectors = [
+                (By.CSS_SELECTOR, "div[data-selector='splp-prd-grid-tile']"),
                 (By.CSS_SELECTOR, "div.product-card"),
                 (By.CSS_SELECTOR, "div[data-itemid]"),
+                (By.CSS_SELECTOR, "[class*='ProductCard']"),
+                (By.CSS_SELECTOR, "[class*='product-card']"),
                 (By.CSS_SELECTOR, "article.product"),
                 (By.CSS_SELECTOR, "div.product-pod"),
-                (By.XPATH, "//div[contains(@class, 'product')]")
+                (By.CSS_SELECTOR, "[data-testid*='product']"),
+                (By.XPATH, "//div[contains(@class, 'product')]"),
+                (By.XPATH, "//article[contains(@class, 'product')]"),
             ]
 
             for selector_type, selector_value in product_selectors:
                 try:
                     first_product = wait.until(EC.presence_of_element_located((selector_type, selector_value)))
-                    logger.info(f"Found product using: {selector_type}")
+                    logger.info(f"Found product using: {selector_type} = {selector_value}")
                     break
                 except TimeoutException:
+                    logger.info(f"Selector not found: {selector_value}")
                     continue
 
             if not first_product:
+                # Log page content for debugging
                 logger.warning("No products found on Lowe's")
+                try:
+                    # Check if there's an error message or captcha
+                    body_text = self.driver.find_element(By.TAG_NAME, "body").text[:500]
+                    logger.info(f"Page body (first 500 chars): {body_text}")
+                except Exception as e:
+                    logger.warning(f"Could not get page body: {e}")
                 return []
 
             # Extract product information - try multiple selectors

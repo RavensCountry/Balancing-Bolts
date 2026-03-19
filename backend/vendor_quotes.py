@@ -385,12 +385,14 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
     LOGIN_URL = "https://www.lowes.com/mylowes/login"
 
     async def login(self) -> bool:
-        """Login to Lowe's"""
+        """Login to Lowe's - handles two-step login flow"""
         try:
             logger.info("Logging into Lowe's...")
             self.driver.get(self.LOGIN_URL)
+            time.sleep(3)
 
-            wait = WebDriverWait(self.driver, 20)
+            wait = WebDriverWait(self.driver, 15)
+            short_wait = WebDriverWait(self.driver, 5)
 
             # Find and fill email field - try multiple selectors
             email_field = None
@@ -398,12 +400,14 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 (By.ID, "email"),
                 (By.NAME, "email"),
                 (By.CSS_SELECTOR, "input[type='email']"),
-                (By.XPATH, "//input[@type='email' or @name='email']")
+                (By.XPATH, "//input[@type='email' or @name='email']"),
+                (By.CSS_SELECTOR, "input[autocomplete='email']"),
+                (By.CSS_SELECTOR, "input[autocomplete='username']")
             ]
 
             for selector_type, selector_value in email_selectors:
                 try:
-                    email_field = wait.until(EC.presence_of_element_located((selector_type, selector_value)))
+                    email_field = wait.until(EC.element_to_be_clickable((selector_type, selector_value)))
                     logger.info(f"Found email field using: {selector_type}")
                     break
                 except:
@@ -414,37 +418,88 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
 
             email_field.clear()
             email_field.send_keys(self.username)
+            logger.info(f"Entered email: {self.username}")
             time.sleep(1)
 
-            # Find and fill password field - try multiple selectors
+            # Check if password field is already visible (single-page login)
             password_field = None
             password_selectors = [
                 (By.ID, "password"),
                 (By.NAME, "password"),
                 (By.CSS_SELECTOR, "input[type='password']"),
-                (By.XPATH, "//input[@type='password' or @name='password']")
+                (By.XPATH, "//input[@type='password']"),
+                (By.CSS_SELECTOR, "input[autocomplete='current-password']")
             ]
 
             for selector_type, selector_value in password_selectors:
                 try:
                     password_field = self.driver.find_element(selector_type, selector_value)
-                    logger.info(f"Found password field using: {selector_type}")
-                    break
+                    if password_field.is_displayed():
+                        logger.info(f"Found password field (single-page login) using: {selector_type}")
+                        break
+                    else:
+                        password_field = None
                 except:
                     continue
 
+            # If password field not found, this might be two-step login
+            # Click continue/next button to proceed to password step
             if not password_field:
-                raise Exception("Could not find password field")
+                logger.info("Password field not visible - trying two-step login flow")
+
+                # Look for continue/next button
+                continue_button = None
+                continue_selectors = [
+                    (By.XPATH, "//button[contains(text(), 'Continue')]"),
+                    (By.XPATH, "//button[contains(text(), 'Next')]"),
+                    (By.CSS_SELECTOR, "button[type='submit']"),
+                    (By.XPATH, "//button[@type='submit']"),
+                    (By.CSS_SELECTOR, "button.continue-btn"),
+                    (By.CSS_SELECTOR, "input[type='submit']")
+                ]
+
+                for selector_type, selector_value in continue_selectors:
+                    try:
+                        continue_button = self.driver.find_element(selector_type, selector_value)
+                        if continue_button.is_displayed():
+                            logger.info(f"Found continue button using: {selector_type}")
+                            break
+                        else:
+                            continue_button = None
+                    except:
+                        continue
+
+                if continue_button:
+                    continue_button.click()
+                    logger.info("Clicked continue button, waiting for password field...")
+                    time.sleep(3)
+
+                    # Now look for password field again
+                    for selector_type, selector_value in password_selectors:
+                        try:
+                            password_field = wait.until(EC.element_to_be_clickable((selector_type, selector_value)))
+                            logger.info(f"Found password field (two-step login) using: {selector_type}")
+                            break
+                        except:
+                            continue
+
+            if not password_field:
+                # Log page source for debugging
+                logger.error("Could not find password field. Page title: " + self.driver.title)
+                raise Exception("Could not find password field after trying all selectors")
 
             password_field.clear()
             password_field.send_keys(self.password)
+            logger.info("Entered password")
             time.sleep(1)
 
-            # Click login button - try multiple selectors
+            # Click sign in button
             login_button = None
             button_selectors = [
                 (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.XPATH, "//button[contains(text(), 'Sign In') or contains(text(), 'Log In')]"),
+                (By.XPATH, "//button[contains(text(), 'Sign In')]"),
+                (By.XPATH, "//button[contains(text(), 'Log In')]"),
+                (By.XPATH, "//button[contains(text(), 'Sign in')]"),
                 (By.CSS_SELECTOR, "button.btn-primary"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
                 (By.XPATH, "//button[@type='submit']")
@@ -453,8 +508,11 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             for selector_type, selector_value in button_selectors:
                 try:
                     login_button = self.driver.find_element(selector_type, selector_value)
-                    logger.info(f"Found login button using: {selector_type}")
-                    break
+                    if login_button.is_displayed():
+                        logger.info(f"Found login button using: {selector_type}")
+                        break
+                    else:
+                        login_button = None
                 except:
                     continue
 
@@ -462,6 +520,7 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 raise Exception("Could not find login button")
 
             login_button.click()
+            logger.info("Clicked login button, waiting for redirect...")
             time.sleep(5)
 
             # Check if login was successful

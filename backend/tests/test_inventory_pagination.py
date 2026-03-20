@@ -5,8 +5,8 @@ client = TestClient(app)
 
 
 def test_inventory_pagination():
-    # signup admin (only admins can create properties)
-    r = client.post('/api/auth/signup', data={'name':'InvAdmin','email':'invmgr@example.com','password':'pw','role':'admin'})
+    # signup admin (only admins can create properties); password must be at least 8 chars
+    r = client.post('/api/auth/signup', data={'name':'InvAdmin','email':'invmgr@example.com','password':'password1','role':'admin'})
     assert r.status_code == 200
     token = r.json()['access_token']
     headers = {'Authorization': f'Bearer {token}'}

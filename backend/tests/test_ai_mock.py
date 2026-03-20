@@ -7,28 +7,48 @@ client = TestClient(app)
 
 
 def test_ai_query_with_mock(monkeypatch):
-    # signup a user to get a token
-    r = client.post('/api/auth/signup', data={'name':'AIUser','email':'ai@example.com','password':'pw','role':'manager'})
+    # signup a user to get a token (password must be at least 8 chars)
+    r = client.post('/api/auth/signup', data={'name': 'AIUser', 'email': 'ai@example.com', 'password': 'password1', 'role': 'manager'})
     assert r.status_code == 200
     token = r.json()['access_token']
     headers = {'Authorization': f'Bearer {token}'}
 
-    # Mock embedding and chat completion
-    class FakeEmb:
-        def __init__(self, embedding):
-            self.embedding = embedding
+    # Mock responses for the new openai 1.x client-based API
+    class MockEmbeddingData:
+        embedding = [0.1, 0.2, 0.3]
 
-    def fake_embed_create(model, input):
-        return {'data': [{'embedding': [0.1, 0.2, 0.3]}]}
+    class MockEmbeddingResponse:
+        data = [MockEmbeddingData()]
 
-    def fake_chat_create(model, messages, max_tokens=500):
-        return {'choices': [{'message': {'content': 'Mocked answer: total spent on white fridges is $1234.56'}}]}
+    class MockChatMessage:
+        content = 'Mocked answer: total spent on white fridges is $1234.56'
 
-    # Patch openai usage inside ai_module
-    # ensure api_key is set so embed_text doesn't raise
-    ai_module.openai.api_key = 'test'
-    monkeypatch.setattr(ai_module.openai.Embedding, 'create', lambda model, input: fake_embed_create(model, input))
-    monkeypatch.setattr(ai_module.openai.ChatCompletion, 'create', lambda model, messages, max_tokens=500: fake_chat_create(model, messages, max_tokens))
+    class MockChatChoice:
+        message = MockChatMessage()
+
+    class MockChatResponse:
+        choices = [MockChatChoice()]
+
+    class MockEmbeddings:
+        def create(self, model, input):
+            return MockEmbeddingResponse()
+
+    class MockCompletions:
+        def create(self, model, messages, max_tokens=500):
+            return MockChatResponse()
+
+    class MockChat:
+        def __init__(self):
+            self.completions = MockCompletions()
+
+    class MockClient:
+        def __init__(self):
+            self.embeddings = MockEmbeddings()
+            self.chat = MockChat()
+
+    # Patch the module-level client and ensure OPENAI_API_KEY is set
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(ai_module, '_openai_client', MockClient())
 
     # perform AI query
     r2 = client.post('/api/ai/query', json={'query': 'how much money have we spent on white fridges'}, headers=headers)

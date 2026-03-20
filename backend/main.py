@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from pydantic import BaseModel, Field, validator, constr
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from .crud import create_property, list_properties, import_invoice, log_activity, add_inventory, create_user, grant_property_access, revoke_property_access, get_user_properties, get_property_users, user_can_access_property
 from sqlmodel import select
@@ -188,12 +188,14 @@ app.add_middleware(RequestSizeLimitMiddleware)
 # Input Validation Models
 class SafeString(BaseModel):
     """Validates and sanitizes string input"""
-    value: constr(max_length=500, strip_whitespace=True)
+    value: str = Field(max_length=500)
 
-    @validator('value')
+    @field_validator('value')
+    @classmethod
     def sanitize_input(cls, v):
-        # Remove potential XSS characters
+        # Strip whitespace and remove potential XSS characters
         if v:
+            v = v.strip()
             v = re.sub(r'[<>]', '', v)
         return v
 
@@ -416,8 +418,8 @@ def health_check():
 def get_properties(current_user=Depends(auth.get_current_user)):
     """Get properties for current user's organization, or all if super admin"""
     if current_user.is_super_admin:
-        return [p.dict() for p in list_properties()]  # No org filter for super admin
-    return [p.dict() for p in list_properties(organization_id=current_user.organization_id)]
+        return [p.model_dump() for p in list_properties()]  # No org filter for super admin
+    return [p.model_dump() for p in list_properties(organization_id=current_user.organization_id)]
 
 @app.post('/api/properties')
 def post_property(name: str = Form(...), address: str = Form(None), user=Depends(auth.require_role('admin'))):
@@ -791,7 +793,7 @@ async def import_invoices(file: UploadFile = File(...), property_id: int = Form(
         try:
             auto_quotes = await auto_quote.generate_quotes_from_invoice(
                 invoice_id=inv.id,
-                user_id=current_user.id,
+                user_id=user.id,
                 property_id=int(property_id),
                 auto_fetch=True  # Automatically fetch quotes from vendors
             )
@@ -833,7 +835,7 @@ def report_monthly(year: int, month: int, property_id: int = None, user=Depends(
     if user.role == 'admin' or user.is_super_admin:
         # Admins can see all properties in their organization
         organization_id = user.organization_id
-    elif user.role == 'property_manager':
+    elif user.role == 'manager':
         # Property managers can only see specific properties they manage
         if property_id:
             # Check if they have access to this property
@@ -870,7 +872,7 @@ def report_yearly(year: int, property_id: int = None, user=Depends(auth.get_curr
     if user.role == 'admin' or user.is_super_admin:
         # Admins can see all properties in their organization
         organization_id = user.organization_id
-    elif user.role == 'property_manager':
+    elif user.role == 'manager':
         # Property managers can only see specific properties they manage
         if property_id:
             # Check if they have access to this property
@@ -911,7 +913,7 @@ def report_quarterly(year: int, quarter: int, property_id: int = None, user=Depe
     if user.role == 'admin' or user.is_super_admin:
         # Admins can see all properties in their organization
         organization_id = user.organization_id
-    elif user.role == 'property_manager':
+    elif user.role == 'manager':
         # Property managers can only see specific properties they manage
         if property_id:
             # Check if they have access to this property
@@ -1012,7 +1014,7 @@ def api_list_inventory(page: int = 1, per_page: int = 20, property_id: int = Non
     from .crud import list_inventory
     org_id = None if user.is_super_admin else user.organization_id  # Super admin sees all
     items, total = list_inventory(page=int(page), per_page=int(per_page), property_id=property_id, organization_id=org_id)
-    return {"items": [i.dict() for i in items], "total": total, "page": int(page), "per_page": int(per_page)}
+    return {"items": [i.model_dump() for i in items], "total": total, "page": int(page), "per_page": int(per_page)}
 
 
 # Auth endpoints

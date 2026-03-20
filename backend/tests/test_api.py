@@ -5,8 +5,8 @@ import pytest
 client = TestClient(app)
 
 def test_signup_login_and_poller_and_reports():
-    # Signup manager
-    r = client.post("/api/auth/signup", data={"name":"Mgr","email":"mgr@example.com","password":"pass","role":"manager"})
+    # Signup manager (password must be at least 8 chars)
+    r = client.post("/api/auth/signup", data={"name":"Mgr","email":"mgr@example.com","password":"password1","role":"manager"})
     assert r.status_code == 200
     j = r.json()
     assert 'access_token' in j
@@ -28,12 +28,12 @@ def test_signup_login_and_poller_and_reports():
     assert r.status_code == 200
     assert r.json().get('status') in ('disabled', 'already_disabled')
 
-    # Monthly report (no invoices yet)
+    # Monthly report (no invoices yet) - response contains 'total_spend'
     r = client.get('/api/reports/monthly', params={'year':2025,'month':12}, headers=headers)
     assert r.status_code == 200
-    assert 'total' in r.json()
+    assert 'total_spend' in r.json()
 
-    # Yearly report
+    # Yearly report - response contains 'total_spend'
     r = client.get('/api/reports/yearly', params={'year':2025}, headers=headers)
     assert r.status_code == 200
-    assert 'total' in r.json()
+    assert 'total_spend' in r.json()

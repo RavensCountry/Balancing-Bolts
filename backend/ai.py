@@ -6,13 +6,22 @@ import numpy as np
 from .database import get_session
 from .models import Embedding
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Module-level client instance (can be replaced in tests)
+_openai_client = None
+
+
+def _get_client() -> openai.OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
+
 
 def embed_text(text: str) -> List[float]:
-    if not openai.api_key:
+    if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY not set")
-    res = openai.Embedding.create(model="text-embedding-3-small", input=text)
-    return res["data"][0]["embedding"]
+    res = _get_client().embeddings.create(model="text-embedding-3-small", input=text)
+    return res.data[0].embedding
 
 
 def store_embedding(source_type: str, source_id: int, text: str):
@@ -54,7 +63,7 @@ def answer_query(query: str) -> str:
         context_parts.append(f"SOURCE: {doc.source_type} (id={doc.source_id})\n{doc.text}")
     context = "\n\n".join(context_parts)
     prompt = f"You are an assistant that answers questions about apartment inventory and invoices. Use only the provided sources.\n\nSOURCES:\n{context}\n\nQUESTION: {query}\n\nAnswer concisely with numbers and units where appropriate."
-    if not openai.api_key:
+    if not os.getenv("OPENAI_API_KEY"):
         return "OpenAI API key not configured. Set OPENAI_API_KEY."
-    resp = openai.ChatCompletion.create(model="gpt-4o-mini", messages=[{"role":"user","content":prompt}], max_tokens=500)
-    return resp["choices"][0]["message"]["content"]
+    resp = _get_client().chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": prompt}], max_tokens=500)
+    return resp.choices[0].message.content

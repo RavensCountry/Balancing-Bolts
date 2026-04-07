@@ -70,7 +70,8 @@ class VendorQuoteFetcher:
     def init_driver(self):
         """Initialize Selenium WebDriver with automatic browser detection and fallback"""
         if self.driver is None:
-            user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            # Use a recent, realistic user agent
+            user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
 
             # Try each browser in preference order
             for browser in BROWSER_PREFERENCE:
@@ -79,13 +80,27 @@ class VendorQuoteFetcher:
                     if browser == 'chrome':
                         logger.info("Attempting to initialize Chrome browser...")
                         chrome_options = ChromeOptions()
-                        chrome_options.add_argument('--headless')
+
+                        # Use new headless mode (less detectable than old --headless)
+                        chrome_options.add_argument('--headless=new')
                         chrome_options.add_argument('--no-sandbox')
                         chrome_options.add_argument('--disable-dev-shm-usage')
                         chrome_options.add_argument('--disable-gpu')
                         chrome_options.add_argument('--window-size=1920,1080')
                         chrome_options.add_argument(f'--user-agent={user_agent}')
-                        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+                        # Anti-detection measures
+                        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+                        chrome_options.add_argument('--disable-infobars')
+                        chrome_options.add_argument('--disable-extensions')
+                        chrome_options.add_argument('--disable-popup-blocking')
+                        chrome_options.add_argument('--start-maximized')
+                        chrome_options.add_argument('--ignore-certificate-errors')
+                        chrome_options.add_argument('--allow-running-insecure-content')
+
+                        # Additional anti-detection
+                        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+                        chrome_options.add_experimental_option('useAutomationExtension', False)
 
                         # Get the driver path and fix the webdriver-manager bug
                         driver_path = ChromeDriverManager().install()
@@ -130,7 +145,26 @@ class VendorQuoteFetcher:
 
                         service = ChromeService(driver_path)
                         self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        logger.info("Successfully initialized Chrome browser")
+
+                        # Execute JavaScript to mask webdriver detection
+                        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                            'source': '''
+                                Object.defineProperty(navigator, 'webdriver', {
+                                    get: () => undefined
+                                });
+                                Object.defineProperty(navigator, 'plugins', {
+                                    get: () => [1, 2, 3, 4, 5]
+                                });
+                                Object.defineProperty(navigator, 'languages', {
+                                    get: () => ['en-US', 'en']
+                                });
+                                window.chrome = {
+                                    runtime: {}
+                                };
+                            '''
+                        })
+
+                        logger.info("Successfully initialized Chrome browser with anti-detection")
                         break
 
                     elif browser == 'firefox':
@@ -564,7 +598,25 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                             logger.info("JavaScript click succeeded")
                         except Exception as e2:
                             logger.error(f"JavaScript click also failed: {e2}")
-                    time.sleep(3)
+                    time.sleep(5)  # Increased wait time
+
+                    # Log page state after clicking continue
+                    try:
+                        logger.info(f"After clicking continue - URL: {self.driver.current_url}")
+                        logger.info(f"After clicking continue - Title: {self.driver.title}")
+                        # Log what inputs are now visible
+                        all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+                        logger.info(f"After clicking continue - Found {len(all_inputs)} input fields")
+                        for i, inp in enumerate(all_inputs[:5]):
+                            try:
+                                inp_type = inp.get_attribute("type") or "(no type)"
+                                inp_name = inp.get_attribute("name") or "(no name)"
+                                inp_displayed = inp.is_displayed()
+                                logger.info(f"Input {i}: type='{inp_type}', name='{inp_name}', visible={inp_displayed}")
+                            except:
+                                pass
+                    except Exception as e:
+                        logger.warning(f"Could not log page state after continue: {e}")
 
                     # Now look for password field again
                     for selector_type, selector_value in password_selectors:

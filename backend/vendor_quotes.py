@@ -1,14 +1,19 @@
 """
 Vendor quote pulling service
 Handles automated login and price fetching from vendor websites using Selenium
+Uses ScraperAPI for sites with strong anti-bot protection (like Lowe's)
 """
 import os
 import json
 import asyncio
 import time
+import re
+import requests
 from typing import List, Dict, Optional
 from datetime import datetime
+from urllib.parse import quote_plus
 from cryptography.fernet import Fernet
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -38,6 +43,10 @@ FORCE_DEMO_MODE = os.getenv('FORCE_DEMO_MODE', 'false').lower() == 'true'
 # Set to 'true' to fail loudly when real scraping fails (no fallback to demo data)
 # This ensures only real pricing data is used for actual purchases
 PRODUCTION_MODE = os.getenv('PRODUCTION_MODE', 'false').lower() == 'true'
+
+# ScraperAPI key for sites with strong anti-bot protection (like Lowe's)
+# Get your API key at https://www.scraperapi.com/
+SCRAPERAPI_KEY = os.getenv('SCRAPERAPI_KEY', '')
 
 # Encryption key for storing passwords securely
 # In production, store this in environment variables
@@ -438,12 +447,160 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
 
 
 class LowesQuoteFetcher(VendorQuoteFetcher):
-    """Lowe's specific implementation with real web scraping"""
+    """Lowe's specific implementation using ScraperAPI to bypass anti-bot protection"""
 
     BASE_URL = "https://www.lowes.com"
     LOGIN_URL = "https://www.lowes.com/mylowes/login"
+    SCRAPERAPI_URL = "http://api.scraperapi.com"
+
+    def __init__(self, username: str = "", encrypted_password: str = "", allow_demo_fallback: bool = True):
+        """Initialize Lowe's fetcher - doesn't need credentials for public pricing"""
+        super().__init__(username, encrypted_password, allow_demo_fallback)
+        self.scraperapi_key = SCRAPERAPI_KEY
 
     async def login(self) -> bool:
+        """Login not required for Lowe's public pricing via ScraperAPI"""
+        # ScraperAPI fetches public pages - no login needed for basic pricing
+        if self.scraperapi_key:
+            logger.info("Lowe's: Using ScraperAPI for public pricing (no login required)")
+            self.is_logged_in = True
+            return True
+        else:
+            logger.warning("Lowe's: No ScraperAPI key configured, will use demo mode")
+            self.is_logged_in = False
+            return False
+
+    async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
+        """Search Lowe's for products using ScraperAPI"""
+        # If no ScraperAPI key, fall back to demo mode
+        if not self.scraperapi_key:
+            logger.warning("No ScraperAPI key configured - using demo mode for Lowe's")
+            return self._get_demo_quote(query, quantity)
+
+        try:
+            logger.info(f"Searching Lowe's via ScraperAPI for: {query}")
+
+            # Build Lowe's search URL
+            search_url = f"{self.BASE_URL}/search?searchTerm={quote_plus(query)}"
+
+            # ScraperAPI parameters
+            params = {
+                'api_key': self.scraperapi_key,
+                'url': search_url,
+                'render': 'true',  # JavaScript rendering for React site
+                'country_code': 'us',
+            }
+
+            # Make request via ScraperAPI
+            logger.info(f"Fetching via ScraperAPI: {search_url}")
+            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
+
+            if response.status_code != 200:
+                logger.error(f"ScraperAPI returned status {response.status_code}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+            html = response.text
+
+            # Check if we got blocked anyway
+            if "access denied" in html.lower() or "something went wrong" in html.lower():
+                logger.warning("Lowe's blocked request even via ScraperAPI")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Try to find products with various selectors
+            products = []
+            product_selectors = [
+                'div[data-selector="splp-prd-grid-tile"]',
+                'div.product-card',
+                '[class*="ProductCard"]',
+                '[class*="product-card"]',
+                'div[data-itemid]',
+            ]
+
+            for selector in product_selectors:
+                products = soup.select(selector)
+                if products:
+                    logger.info(f"Found {len(products)} products with selector: {selector}")
+                    break
+
+            if not products:
+                logger.warning(f"No products found for query: {query}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+            # Extract info from first product
+            first = products[0]
+
+            # Get product name
+            product_name = query  # Default
+            name_selectors = ['[class*="title"]', 'h2', 'h3', 'a[href*="/pd/"]']
+            for sel in name_selectors:
+                name_elem = first.select_one(sel)
+                if name_elem and name_elem.get_text(strip=True):
+                    product_name = name_elem.get_text(strip=True)[:100]
+                    break
+
+            # Get price
+            unit_price = 0.0
+            price_selectors = ['[class*="price"]', 'span.price', 'div.price']
+            for sel in price_selectors:
+                price_elem = first.select_one(sel)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                    if price_match:
+                        unit_price = float(price_match.group(1).replace(',', ''))
+                        logger.info(f"Extracted price: ${unit_price}")
+                        break
+
+            # Get product URL
+            product_url = search_url
+            link_elem = first.select_one('a[href*="/pd/"]')
+            if link_elem:
+                href = link_elem.get('href', '')
+                if href.startswith('/'):
+                    product_url = self.BASE_URL + href
+                elif href.startswith('http'):
+                    product_url = href
+
+            # Get item number
+            item_number = f"LOW-{abs(hash(query)) % 1000000}"
+            if first.get('data-itemid'):
+                item_number = first.get('data-itemid')
+
+            logger.info(f"Found Lowe's product: {product_name} - ${unit_price}")
+
+            return [{
+                'vendor_name': "Lowe's",
+                'item_name': product_name,
+                'item_description': product_name,
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'total_price': unit_price * quantity,
+                'vendor_item_number': item_number,
+                'availability': 'Check store availability',
+                'vendor_url': product_url
+            }]
+
+        except requests.Timeout:
+            logger.error("ScraperAPI request timed out")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
+            return []
+        except Exception as e:
+            logger.error(f"Lowe's ScraperAPI search failed: {e}")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
+            return []
+
+    async def _legacy_login(self) -> bool:
         """Login to Lowe's - handles two-step login flow"""
         try:
             logger.info("Logging into Lowe's...")
@@ -729,13 +886,12 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             self.is_logged_in = False
             return False
 
-    async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Lowe's for products and extract real pricing"""
+    async def _legacy_search_product(self, query: str, quantity: int = 1) -> List[Dict]:
+        """[LEGACY - Not used] Search Lowe's using Selenium (blocked by anti-bot)"""
         try:
             logger.info(f"Searching Lowe's for: {query}")
 
             # Navigate to search page - use URL encoding for special chars
-            from urllib.parse import quote_plus
             search_url = f"{self.BASE_URL}/search?searchTerm={quote_plus(query)}"
             logger.info(f"Navigating to: {search_url}")
             self.driver.get(search_url)

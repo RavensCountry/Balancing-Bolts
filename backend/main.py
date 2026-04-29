@@ -763,44 +763,302 @@ def resman_callback(code: str = None):
 
 @app.post('/api/import-invoices')
 async def import_invoices(file: UploadFile = File(...), property_id: int = Form(...), user=Depends(auth.get_current_user)):
-    # Accept CSV with columns: vendor,date,total,description
+    """
+    Import invoices from CSV file.
+
+    Supports two CSV formats:
+
+    Format 1 - Simple (one row per invoice):
+        vendor, date, total, description
+        "Home Depot", "2024-01-15", 150.00, "Light bulbs and filters"
+
+    Format 2 - Detailed (one row per item, groups by invoice):
+        vendor, date, item_name, quantity, unit_price, total, product_id, description
+        "Home Depot", "2024-01-15", "LED Light Bulb 60W", 10, 5.99, 59.90, "SKU123", "For unit 101"
+        "Home Depot", "2024-01-15", "HVAC Filter 20x25", 2, 15.00, 30.00, "SKU456", "Quarterly replacement"
+
+    Items are automatically added to inventory and linked to the invoice.
+    """
     content = await file.read()
     try:
         df = pd.read_csv(io.BytesIO(content))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f'CSV parse error: {e}')
-    created = []
-    for _, row in df.iterrows():
-        date = None
-        try:
-            date = pd.to_datetime(row.get('date'))
-            date = date.to_pydatetime()
-        except:
-            date = datetime.utcnow()
-        total = float(row.get('total') or 0)
-        vendor = row.get('vendor') or ''
-        raw = str(row.to_dict())
-        inv = import_invoice(property_id=int(property_id), vendor=vendor, date=date, total=total, raw_text=raw)
-        # store embedding for invoice text
-        try:
-            ai.store_embedding('invoice', inv.id, raw)
-        except Exception:
-            pass
 
-        # Automatically generate quote requests from invoice and fetch quotes
-        try:
-            auto_quotes = await auto_quote.generate_quotes_from_invoice(
-                invoice_id=inv.id,
-                user_id=user.id,
+    # Normalize column names (lowercase, strip whitespace)
+    df.columns = [col.lower().strip().replace(' ', '_') for col in df.columns]
+
+    # Detect CSV format based on columns present
+    has_item_columns = any(col in df.columns for col in ['item_name', 'item', 'product', 'product_name'])
+
+    created_invoices = []
+    created_items = []
+
+    if has_item_columns:
+        # Format 2: Detailed format with line items
+        # Group rows by vendor + date to create invoices
+        # Use 'vendor' or 'supplier' column
+        vendor_col = 'vendor' if 'vendor' in df.columns else ('supplier' if 'supplier' in df.columns else None)
+        item_col = next((col for col in ['item_name', 'item', 'product', 'product_name'] if col in df.columns), None)
+
+        if not vendor_col:
+            raise HTTPException(status_code=400, detail="CSV must have 'vendor' or 'supplier' column")
+        if not item_col:
+            raise HTTPException(status_code=400, detail="CSV must have 'item_name', 'item', 'product', or 'product_name' column")
+
+        # Group by vendor and date
+        grouped = df.groupby([vendor_col, 'date'] if 'date' in df.columns else [vendor_col])
+
+        for group_key, group_df in grouped:
+            if isinstance(group_key, tuple):
+                vendor = group_key[0] or ''
+                date_str = group_key[1] if len(group_key) > 1 else None
+            else:
+                vendor = group_key or ''
+                date_str = None
+
+            # Parse date
+            inv_date = None
+            try:
+                if date_str:
+                    inv_date = pd.to_datetime(date_str).to_pydatetime()
+            except:
+                pass
+            if not inv_date:
+                inv_date = datetime.utcnow()
+
+            # Calculate total from line items
+            line_total = 0.0
+            for _, row in group_df.iterrows():
+                # Try different column names for total/price
+                item_total = 0.0
+                if 'total' in row and pd.notna(row.get('total')):
+                    item_total = float(row.get('total') or 0)
+                elif 'line_total' in row and pd.notna(row.get('line_total')):
+                    item_total = float(row.get('line_total') or 0)
+                elif 'unit_price' in row and 'quantity' in row:
+                    qty = int(row.get('quantity') or 1)
+                    price = float(row.get('unit_price') or 0)
+                    item_total = qty * price
+                elif 'price' in row and 'quantity' in row:
+                    qty = int(row.get('quantity') or 1)
+                    price = float(row.get('price') or 0)
+                    item_total = qty * price
+                elif 'price' in row:
+                    item_total = float(row.get('price') or 0)
+                line_total += item_total
+
+            # Build raw text from all items for AI/search
+            raw_items = []
+            for _, row in group_df.iterrows():
+                raw_items.append(str(row.to_dict()))
+            raw_text = '\n'.join(raw_items)
+
+            # Create invoice
+            inv = import_invoice(
                 property_id=int(property_id),
-                auto_fetch=True  # Automatically fetch quotes from vendors
+                vendor=str(vendor),
+                date=inv_date,
+                total=line_total,
+                raw_text=raw_text
             )
-            logger.info(f"Auto-generated {len(auto_quotes)} quote requests for invoice {inv.id}")
-        except Exception as e:
-            logger.exception(f"Error auto-generating quotes for invoice {inv.id}: {e}")
 
-        created.append({'id': inv.id, 'total': inv.total, 'vendor': inv.vendor})
-    return {'imported': len(created), 'items': created}
+            # Store embedding for search
+            try:
+                ai.store_embedding('invoice', inv.id, raw_text)
+            except Exception:
+                pass
+
+            # Create inventory items for each line
+            for _, row in group_df.iterrows():
+                item_name = str(row.get(item_col) or 'Unknown Item')
+                if not item_name or item_name == 'nan':
+                    continue
+
+                # Get quantity
+                qty = 1
+                if 'quantity' in row and pd.notna(row.get('quantity')):
+                    try:
+                        qty = int(float(row.get('quantity')))
+                    except:
+                        qty = 1
+
+                # Get unit price/cost
+                cost = 0.0
+                if 'unit_price' in row and pd.notna(row.get('unit_price')):
+                    cost = float(row.get('unit_price') or 0)
+                elif 'price' in row and pd.notna(row.get('price')):
+                    cost = float(row.get('price') or 0)
+                elif 'cost' in row and pd.notna(row.get('cost')):
+                    cost = float(row.get('cost') or 0)
+                elif 'total' in row and pd.notna(row.get('total')) and qty > 0:
+                    # Calculate unit price from total
+                    cost = float(row.get('total') or 0) / qty
+
+                # Get description
+                desc = None
+                if 'description' in row and pd.notna(row.get('description')):
+                    desc = str(row.get('description'))
+                elif 'notes' in row and pd.notna(row.get('notes')):
+                    desc = str(row.get('notes'))
+
+                # Get product ID/SKU
+                product_id = None
+                for pid_col in ['product_id', 'sku', 'item_number', 'part_number', 'upc']:
+                    if pid_col in row and pd.notna(row.get(pid_col)):
+                        product_id = str(row.get(pid_col))
+                        break
+
+                # Get unit number if specified
+                unit_number = None
+                if 'unit_number' in row and pd.notna(row.get('unit_number')):
+                    unit_number = str(row.get('unit_number'))
+                elif 'unit' in row and pd.notna(row.get('unit')):
+                    unit_number = str(row.get('unit'))
+
+                # Create inventory item linked to invoice
+                try:
+                    inv_item = add_inventory(
+                        property_id=int(property_id),
+                        name=item_name,
+                        desc=desc,
+                        qty=qty,
+                        cost=cost,
+                        invoice_id=inv.id,
+                        product_id=product_id,
+                        unit_number=unit_number
+                    )
+                    created_items.append({
+                        'id': inv_item.id,
+                        'name': inv_item.name,
+                        'quantity': inv_item.quantity,
+                        'cost': inv_item.cost,
+                        'invoice_id': inv.id
+                    })
+                    logger.info(f"Created inventory item: {item_name} (qty: {qty}, cost: ${cost})")
+                except Exception as e:
+                    logger.error(f"Failed to create inventory item '{item_name}': {e}")
+
+            created_invoices.append({
+                'id': inv.id,
+                'vendor': inv.vendor,
+                'total': inv.total,
+                'date': inv.date.isoformat() if inv.date else None,
+                'items_count': len([i for i in created_items if i.get('invoice_id') == inv.id])
+            })
+
+            # Generate quote requests for reorderable items
+            try:
+                auto_quotes = await auto_quote.generate_quotes_from_invoice(
+                    invoice_id=inv.id,
+                    user_id=user.id,
+                    property_id=int(property_id),
+                    auto_fetch=True
+                )
+                logger.info(f"Auto-generated {len(auto_quotes)} quote requests for invoice {inv.id}")
+            except Exception as e:
+                logger.exception(f"Error auto-generating quotes for invoice {inv.id}: {e}")
+
+    else:
+        # Format 1: Simple format (one row per invoice)
+        for _, row in df.iterrows():
+            date = None
+            try:
+                date = pd.to_datetime(row.get('date'))
+                date = date.to_pydatetime()
+            except:
+                date = datetime.utcnow()
+
+            total = float(row.get('total') or 0)
+            vendor = row.get('vendor') or row.get('supplier') or ''
+            raw = str(row.to_dict())
+
+            inv = import_invoice(
+                property_id=int(property_id),
+                vendor=str(vendor),
+                date=date,
+                total=total,
+                raw_text=raw
+            )
+
+            # Store embedding for search
+            try:
+                ai.store_embedding('invoice', inv.id, raw)
+            except Exception:
+                pass
+
+            # Try to extract items from description field
+            description = row.get('description') or ''
+            if description and str(description) != 'nan':
+                # Split description by common delimiters to find individual items
+                import re
+                items_text = re.split(r'[;,\n]', str(description))
+                for item_text in items_text:
+                    item_text = item_text.strip()
+                    if len(item_text) >= 3:
+                        # Try to extract quantity from text (e.g., "10x Light bulbs", "Light bulbs (5)")
+                        qty = 1
+                        qty_match = re.search(r'(\d+)\s*[xX]\s*(.+)', item_text)
+                        if qty_match:
+                            qty = int(qty_match.group(1))
+                            item_text = qty_match.group(2).strip()
+                        else:
+                            qty_match = re.search(r'(.+?)\s*\((\d+)\)', item_text)
+                            if qty_match:
+                                item_text = qty_match.group(1).strip()
+                                qty = int(qty_match.group(2))
+                            else:
+                                qty_match = re.search(r'(\d+)\s+(.+)', item_text)
+                                if qty_match and int(qty_match.group(1)) < 1000:  # Avoid matching prices
+                                    qty = int(qty_match.group(1))
+                                    item_text = qty_match.group(2).strip()
+
+                        if item_text:
+                            try:
+                                inv_item = add_inventory(
+                                    property_id=int(property_id),
+                                    name=item_text[:100],  # Limit name length
+                                    desc=f"Imported from invoice #{inv.id}",
+                                    qty=qty,
+                                    cost=0.0,  # Unknown unit cost in simple format
+                                    invoice_id=inv.id
+                                )
+                                created_items.append({
+                                    'id': inv_item.id,
+                                    'name': inv_item.name,
+                                    'quantity': inv_item.quantity,
+                                    'cost': inv_item.cost,
+                                    'invoice_id': inv.id
+                                })
+                            except Exception as e:
+                                logger.error(f"Failed to create inventory item from description: {e}")
+
+            created_invoices.append({
+                'id': inv.id,
+                'vendor': inv.vendor,
+                'total': inv.total,
+                'date': inv.date.isoformat() if inv.date else None,
+                'items_count': len([i for i in created_items if i.get('invoice_id') == inv.id])
+            })
+
+            # Generate quote requests for reorderable items
+            try:
+                auto_quotes = await auto_quote.generate_quotes_from_invoice(
+                    invoice_id=inv.id,
+                    user_id=user.id,
+                    property_id=int(property_id),
+                    auto_fetch=True
+                )
+                logger.info(f"Auto-generated {len(auto_quotes)} quote requests for invoice {inv.id}")
+            except Exception as e:
+                logger.exception(f"Error auto-generating quotes for invoice {inv.id}: {e}")
+
+    return {
+        'imported': len(created_invoices),
+        'invoices': created_invoices,
+        'inventory_items': created_items,
+        'total_items': len(created_items)
+    }
 
 @app.post('/api/ai/query')
 async def ai_query(payload: dict):

@@ -2263,9 +2263,36 @@
         <div id="invoicesPage" class="page">
           <div class="card">
             <h3>📄 Import Invoices from CSV</h3>
-            <p class="text-muted mb-2">Upload a CSV file with columns: vendor, date, total, description</p>
+            <p class="text-muted mb-2">Upload vendor invoices to automatically track inventory and spending.</p>
+
             <div class="alert info" style="margin-bottom: 1rem;">
-              <strong>🤖 Automatic Quote Generation:</strong> When you import invoices, the system will automatically identify reorderable items (like light bulbs, filters, cleaning supplies) and create quote requests. You can then compare prices from multiple vendors instantly!
+              <strong>📦 Auto-Inventory:</strong> Items are automatically added to your inventory with quantities, prices, and linked to the invoice for tracking.
+            </div>
+
+            <details style="margin-bottom: 1rem; padding: 0.75rem; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+              <summary style="cursor: pointer; font-weight: 600;">📋 CSV Format Guide (click to expand)</summary>
+              <div style="margin-top: 0.75rem; font-size: 0.875rem;">
+                <p><strong>Format 1 - Simple (one row per invoice):</strong></p>
+                <code style="display: block; padding: 0.5rem; background: var(--bg-color); border-radius: 4px; margin-bottom: 0.75rem; overflow-x: auto;">
+vendor, date, total, description<br>
+"Home Depot", "2024-01-15", 150.00, "10x Light bulbs, 2x HVAC filters"
+                </code>
+
+                <p><strong>Format 2 - Detailed (one row per item):</strong></p>
+                <code style="display: block; padding: 0.5rem; background: var(--bg-color); border-radius: 4px; overflow-x: auto;">
+vendor, date, item_name, quantity, unit_price, product_id<br>
+"Home Depot", "2024-01-15", "LED Light Bulb 60W", 10, 5.99, "SKU123"<br>
+"Home Depot", "2024-01-15", "HVAC Filter 20x25", 2, 15.00, "SKU456"
+                </code>
+
+                <p style="margin-top: 0.75rem; color: var(--text-secondary);">
+                  <strong>Supported columns:</strong> vendor, date, item_name (or item/product), quantity, unit_price (or price/cost), total, product_id (or sku), description, unit_number
+                </p>
+              </div>
+            </details>
+
+            <div class="alert success" style="margin-bottom: 1rem;">
+              <strong>🤖 Auto Quote Requests:</strong> Reorderable items (light bulbs, filters, cleaning supplies) automatically get price quotes from multiple vendors!
             </div>
             <input type="file" id="csvFile" accept=".csv" />
             <select id="invoicePropertySelect">
@@ -3866,14 +3893,81 @@
           const data = await res.json();
 
           if (res.ok) {
-            resultEl.innerHTML = `<div class="alert success">✓ Imported ${data.imported} invoices successfully! Checking for auto-quotable items...</div>`;
+            // Build success message with import details
+            let successMsg = `<div class="alert success">
+              <strong>✓ Import Successful!</strong><br>
+              📄 ${data.imported} invoice(s) imported<br>
+              📦 ${data.total_items || 0} inventory item(s) added
+            </div>`;
+
+            // Show imported invoices summary
+            if (data.invoices && data.invoices.length > 0) {
+              successMsg += `<div style="margin-top: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
+                <h4 style="margin: 0 0 0.5rem 0;">📋 Imported Invoices</h4>
+                <table style="width: 100%; font-size: 0.875rem;">
+                  <thead>
+                    <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
+                      <th style="padding: 0.5rem;">Vendor</th>
+                      <th style="padding: 0.5rem;">Date</th>
+                      <th style="padding: 0.5rem;">Total</th>
+                      <th style="padding: 0.5rem;">Items</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.invoices.map(inv => `
+                      <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.5rem;">${inv.vendor || 'Unknown'}</td>
+                        <td style="padding: 0.5rem;">${inv.date ? new Date(inv.date).toLocaleDateString() : '-'}</td>
+                        <td style="padding: 0.5rem;">$${(inv.total || 0).toFixed(2)}</td>
+                        <td style="padding: 0.5rem;">${inv.items_count || 0}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>`;
+            }
+
+            // Show imported inventory items
+            if (data.inventory_items && data.inventory_items.length > 0) {
+              successMsg += `<div style="margin-top: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px;">
+                <h4 style="margin: 0 0 0.5rem 0;">📦 Inventory Items Added</h4>
+                <table style="width: 100%; font-size: 0.875rem;">
+                  <thead>
+                    <tr style="text-align: left; border-bottom: 1px solid var(--border-color);">
+                      <th style="padding: 0.5rem;">Item</th>
+                      <th style="padding: 0.5rem;">Qty</th>
+                      <th style="padding: 0.5rem;">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.inventory_items.slice(0, 20).map(item => `
+                      <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.5rem;">${item.name}</td>
+                        <td style="padding: 0.5rem;">${item.quantity}</td>
+                        <td style="padding: 0.5rem;">$${(item.cost || 0).toFixed(2)}</td>
+                      </tr>
+                    `).join('')}
+                    ${data.inventory_items.length > 20 ? `
+                      <tr>
+                        <td colspan="3" style="padding: 0.5rem; text-align: center; color: var(--text-secondary);">
+                          ... and ${data.inventory_items.length - 20} more items
+                        </td>
+                      </tr>
+                    ` : ''}
+                  </tbody>
+                </table>
+              </div>`;
+            }
+
+            resultEl.innerHTML = successMsg;
             refreshStats();
+            loadInventory(); // Refresh inventory list
 
             // Check for auto-generated quotes for each imported invoice
-            if (data.items && data.items.length > 0) {
+            if (data.invoices && data.invoices.length > 0) {
               // Wait a moment for auto-quote generation to complete
               setTimeout(async () => {
-                await checkInvoiceQuotes(data.items);
+                await checkInvoiceQuotes(data.invoices);
               }, 1000);
             }
           } else {

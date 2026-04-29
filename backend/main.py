@@ -791,7 +791,7 @@ async def import_invoices(file: UploadFile = File(...), property_id: int = Form(
         try:
             auto_quotes = await auto_quote.generate_quotes_from_invoice(
                 invoice_id=inv.id,
-                user_id=current_user.id,
+                user_id=user.id,
                 property_id=int(property_id),
                 auto_fetch=True  # Automatically fetch quotes from vendors
             )

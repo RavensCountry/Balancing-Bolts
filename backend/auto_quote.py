@@ -149,19 +149,76 @@ async def generate_quotes_from_invoice(
 
         if invoice.raw_text:
             # Parse invoice text for items
-            lines = invoice.raw_text.split('\n')
-            for line in lines:
-                line = line.strip()
-                if not line or len(line) < 10:  # Skip short lines
-                    continue
+            # raw_text can be either:
+            # 1. A stringified dict like "{'vendor': 'Home Depot', 'description': 'Light bulbs'}"
+            # 2. Newline-separated text
+            raw = invoice.raw_text.strip()
 
-                # Check if this line describes a reorderable item
-                if should_auto_quote(line, invoice.vendor):
-                    items_to_quote.append({
-                        'description': clean_item_description(line),
-                        'quantity': extract_quantity_from_description(line),
-                        'source': 'invoice_text'
-                    })
+            # Check if it's a stringified dict
+            if raw.startswith('{') and raw.endswith('}'):
+                try:
+                    # Try to parse as Python dict literal
+                    import ast
+                    data = ast.literal_eval(raw)
+
+                    # Extract description field which contains the item details
+                    description = data.get('description', '') or ''
+                    if description:
+                        # Description might contain multiple items separated by commas or semicolons
+                        items_list = re.split(r'[;,]', description)
+                        for item in items_list:
+                            item = item.strip()
+                            if item and len(item) >= 5:
+                                if should_auto_quote(item, invoice.vendor):
+                                    items_to_quote.append({
+                                        'description': clean_item_description(item),
+                                        'quantity': extract_quantity_from_description(item),
+                                        'source': 'invoice_text'
+                                    })
+
+                    # Also check other fields that might contain item info
+                    for key in ['items', 'line_items', 'products', 'item_name', 'product_name']:
+                        if key in data and data[key]:
+                            item_data = data[key]
+                            if isinstance(item_data, str):
+                                if should_auto_quote(item_data, invoice.vendor):
+                                    items_to_quote.append({
+                                        'description': clean_item_description(item_data),
+                                        'quantity': extract_quantity_from_description(item_data),
+                                        'source': 'invoice_text'
+                                    })
+                            elif isinstance(item_data, list):
+                                for i in item_data:
+                                    if isinstance(i, str) and should_auto_quote(i, invoice.vendor):
+                                        items_to_quote.append({
+                                            'description': clean_item_description(i),
+                                            'quantity': extract_quantity_from_description(i),
+                                            'source': 'invoice_text'
+                                        })
+                except (ValueError, SyntaxError) as e:
+                    logger.warning(f"Could not parse raw_text as dict: {e}")
+                    # Fall back to treating it as text
+                    if should_auto_quote(raw, invoice.vendor):
+                        items_to_quote.append({
+                            'description': clean_item_description(raw),
+                            'quantity': extract_quantity_from_description(raw),
+                            'source': 'invoice_text'
+                        })
+            else:
+                # Handle as newline-separated text
+                lines = raw.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if not line or len(line) < 10:  # Skip short lines
+                        continue
+
+                    # Check if this line describes a reorderable item
+                    if should_auto_quote(line, invoice.vendor):
+                        items_to_quote.append({
+                            'description': clean_item_description(line),
+                            'quantity': extract_quantity_from_description(line),
+                            'source': 'invoice_text'
+                        })
 
         # Also check inventory items that might need reordering
         for item in items:

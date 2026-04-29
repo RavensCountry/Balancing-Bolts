@@ -2052,7 +2052,7 @@ async def fetch_quotes(
             # Create demo credentials (passwords don't matter in demo mode, so use plain text)
             creds_data = [
                 {'vendor_name': 'Home Depot', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'},
-                {'vendor_name': 'Lowes', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'},
+                {'vendor_name': "Lowe's", 'username': 'demo', 'encrypted_password': 'DEMO_MODE'},
                 {'vendor_name': 'Grainger', 'username': 'demo', 'encrypted_password': 'DEMO_MODE'}
             ]
         else:

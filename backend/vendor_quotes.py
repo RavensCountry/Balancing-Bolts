@@ -298,105 +298,161 @@ class VendorQuoteFetcher:
 
 
 class HomeDepotQuoteFetcher(VendorQuoteFetcher):
-    """Home Depot specific implementation with real web scraping"""
+    """Home Depot specific implementation using ScraperAPI to bypass anti-bot protection"""
 
     BASE_URL = "https://www.homedepot.com"
     LOGIN_URL = "https://www.homedepot.com/auth/view/signin"
+    SCRAPERAPI_URL = "http://api.scraperapi.com"
+
+    def __init__(self, username: str = "", encrypted_password: str = "", allow_demo_fallback: bool = True):
+        """Initialize Home Depot fetcher - doesn't need credentials for public pricing"""
+        super().__init__(username, encrypted_password, allow_demo_fallback)
+        self.scraperapi_key = SCRAPERAPI_KEY
 
     async def login(self) -> bool:
-        """Login to Home Depot"""
-        try:
-            logger.info("Logging into Home Depot...")
-            self.driver.get(self.LOGIN_URL)
-
-            # Wait for login form
-            wait = WebDriverWait(self.driver, 15)
-
-            # Find and fill email field
-            email_field = wait.until(EC.presence_of_element_located((By.ID, "Email")))
-            email_field.clear()
-            email_field.send_keys(self.username)
-
-            # Find and fill password field
-            password_field = self.driver.find_element(By.ID, "Password")
-            password_field.clear()
-            password_field.send_keys(self.password)
-
-            # Click login button
-            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-            login_button.click()
-
-            # Wait for redirect to home page
-            time.sleep(3)
-
-            # Check if login was successful
-            if "myaccount" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
-                logger.info("Successfully logged into Home Depot")
-                self.is_logged_in = True
-                return True
-            else:
-                logger.warning("Home Depot login may have failed")
-                self.is_logged_in = False
-                return False
-
-        except Exception as e:
-            logger.error(f"Home Depot login failed: {e}")
+        """Login not required for Home Depot public pricing via ScraperAPI"""
+        # ScraperAPI fetches public pages - no login needed for basic pricing
+        if self.scraperapi_key:
+            logger.info("Home Depot: Using ScraperAPI for public pricing (no login required)")
+            self.is_logged_in = True
+            return True
+        else:
+            logger.warning("Home Depot: No ScraperAPI key configured, will use demo mode")
             self.is_logged_in = False
             return False
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Home Depot for products and extract real pricing"""
+        """Search Home Depot for products using ScraperAPI"""
+        # If no ScraperAPI key, fall back to demo mode
+        if not self.scraperapi_key:
+            logger.warning("No ScraperAPI key configured - using demo mode for Home Depot")
+            return self._get_demo_quote(query, quantity)
+
         try:
-            logger.info(f"Searching Home Depot for: {query}")
+            logger.info(f"Searching Home Depot via ScraperAPI for: {query}")
 
-            # Navigate to search page
-            search_url = f"{self.BASE_URL}/s/{query.replace(' ', '%20')}"
-            self.driver.get(search_url)
+            # Build Home Depot search URL
+            search_url = f"{self.BASE_URL}/s/{quote_plus(query)}"
 
-            time.sleep(2)
+            # ScraperAPI parameters
+            params = {
+                'api_key': self.scraperapi_key,
+                'url': search_url,
+                'render': 'true',  # JavaScript rendering for React site
+                'country_code': 'us',
+            }
 
-            # Wait for search results
-            wait = WebDriverWait(self.driver, 10)
+            # Make request via ScraperAPI
+            logger.info(f"Fetching via ScraperAPI: {search_url}")
+            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
 
-            # Find first product in results
-            try:
-                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-pod")))
-            except TimeoutException:
-                logger.warning("No products found on Home Depot")
+            if response.status_code != 200:
+                logger.error(f"ScraperAPI returned status {response.status_code}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
                 return []
 
-            # Extract product information
-            product_name = first_product.find_element(By.CSS_SELECTOR, "span.product-header__title").text
+            html = response.text
 
-            # Extract price
-            try:
-                price_element = first_product.find_element(By.CSS_SELECTOR, "div.price")
-                price_text = price_element.text.replace('$', '').replace(',', '').strip()
-                unit_price = float(price_text.split()[0])
-            except:
-                logger.warning("Could not extract price from Home Depot")
-                unit_price = 0.0
+            # Check if we got blocked anyway
+            if "access denied" in html.lower() or "something went wrong" in html.lower():
+                logger.warning("Home Depot blocked request even via ScraperAPI")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
 
-            # Extract product URL
-            try:
-                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-pod__title")
-                product_url = product_link.get_attribute('href')
-            except:
-                product_url = search_url
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
 
-            # Extract SKU/Item number
-            try:
-                sku_element = first_product.find_element(By.CSS_SELECTOR, "span.product-identifier")
-                sku = sku_element.text.split('#')[-1].strip()
-            except:
-                sku = f"HD-{abs(hash(query)) % 1000000}"
+            # Try to find products with various selectors
+            products = []
+            product_selectors = [
+                'div[data-testid="product-pod"]',
+                'div.product-pod',
+                '[class*="product-pod"]',
+                '[class*="ProductPod"]',
+                'div[data-component="product-pod"]',
+                'article[data-testid]',
+            ]
 
-            # Extract availability
-            try:
-                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.fulfillment__availability")
-                availability = availability_element.text
-            except:
-                availability = "Check store availability"
+            for selector in product_selectors:
+                products = soup.select(selector)
+                if products:
+                    logger.info(f"Found {len(products)} products with selector: {selector}")
+                    break
+
+            if not products:
+                logger.warning(f"No products found for query: {query}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+            # Extract info from first product
+            first = products[0]
+
+            # Get product name
+            product_name = query  # Default
+            name_selectors = [
+                '[class*="product-title"]',
+                '[class*="product-header__title"]',
+                'span.product-header__title',
+                'a[data-testid="product-title"]',
+                'h2', 'h3',
+                'a[href*="/p/"]'
+            ]
+            for sel in name_selectors:
+                name_elem = first.select_one(sel)
+                if name_elem and name_elem.get_text(strip=True):
+                    product_name = name_elem.get_text(strip=True)[:100]
+                    break
+
+            # Get price
+            unit_price = 0.0
+            price_selectors = [
+                '[class*="price__dollars"]',
+                '[class*="price-format__main-price"]',
+                'span[class*="price"]',
+                'div[class*="price"]',
+                '[data-testid="price"]'
+            ]
+            for sel in price_selectors:
+                price_elem = first.select_one(sel)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                    if price_match:
+                        unit_price = float(price_match.group(1).replace(',', ''))
+                        logger.info(f"Extracted price: ${unit_price}")
+                        break
+
+            # Get product URL
+            product_url = search_url
+            link_elem = first.select_one('a[href*="/p/"]')
+            if link_elem:
+                href = link_elem.get('href', '')
+                if href.startswith('/'):
+                    product_url = self.BASE_URL + href
+                elif href.startswith('http'):
+                    product_url = href
+
+            # Get item number/SKU
+            item_number = f"HD-{abs(hash(query)) % 1000000}"
+            sku_selectors = [
+                '[class*="product-identifier"]',
+                '[data-testid="product-identifier"]',
+                'span[class*="model"]'
+            ]
+            for sel in sku_selectors:
+                sku_elem = first.select_one(sel)
+                if sku_elem:
+                    sku_text = sku_elem.get_text(strip=True)
+                    # Extract number after # or "Model"
+                    sku_match = re.search(r'#?\s*(\w+)', sku_text)
+                    if sku_match:
+                        item_number = sku_match.group(1)
+                        break
+
+            logger.info(f"Found Home Depot product: {product_name} - ${unit_price}")
 
             return [{
                 'vendor_name': 'Home Depot',
@@ -405,13 +461,20 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                 'unit_price': unit_price,
                 'quantity': quantity,
                 'total_price': unit_price * quantity,
-                'vendor_item_number': sku,
-                'availability': availability,
+                'vendor_item_number': item_number,
+                'availability': 'Check store availability',
                 'vendor_url': product_url
             }]
 
+        except requests.Timeout:
+            logger.error("ScraperAPI request timed out")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
+            return []
         except Exception as e:
-            logger.error(f"Home Depot search failed: {e}")
+            logger.error(f"Home Depot ScraperAPI search failed: {e}")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
             return []
 
     def _get_demo_quote(self, query: str, quantity: int) -> List[Dict]:
@@ -1076,102 +1139,157 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
 
 
 class GraingerQuoteFetcher(VendorQuoteFetcher):
-    """Grainger specific implementation with real web scraping"""
+    """Grainger specific implementation using ScraperAPI to bypass anti-bot protection"""
 
     BASE_URL = "https://www.grainger.com"
     LOGIN_URL = "https://www.grainger.com/login"
+    SCRAPERAPI_URL = "http://api.scraperapi.com"
+
+    def __init__(self, username: str = "", encrypted_password: str = "", allow_demo_fallback: bool = True):
+        """Initialize Grainger fetcher - doesn't need credentials for public pricing"""
+        super().__init__(username, encrypted_password, allow_demo_fallback)
+        self.scraperapi_key = SCRAPERAPI_KEY
 
     async def login(self) -> bool:
-        """Login to Grainger"""
-        try:
-            logger.info("Logging into Grainger...")
-            self.driver.get(self.LOGIN_URL)
-
-            wait = WebDriverWait(self.driver, 15)
-
-            # Find and fill username field
-            username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
-            username_field.clear()
-            username_field.send_keys(self.username)
-
-            # Find and fill password field
-            password_field = self.driver.find_element(By.ID, "password")
-            password_field.clear()
-            password_field.send_keys(self.password)
-
-            # Click login button
-            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-            login_button.click()
-
-            time.sleep(3)
-
-            # Check if login was successful
-            if "myaccount" in self.driver.current_url or self.driver.current_url == self.BASE_URL + "/":
-                logger.info("Successfully logged into Grainger")
-                self.is_logged_in = True
-                return True
-            else:
-                logger.warning("Grainger login may have failed")
-                self.is_logged_in = False
-                return False
-
-        except Exception as e:
-            logger.error(f"Grainger login failed: {e}")
+        """Login not required for Grainger public pricing via ScraperAPI"""
+        # ScraperAPI fetches public pages - no login needed for basic pricing
+        if self.scraperapi_key:
+            logger.info("Grainger: Using ScraperAPI for public pricing (no login required)")
+            self.is_logged_in = True
+            return True
+        else:
+            logger.warning("Grainger: No ScraperAPI key configured, will use demo mode")
             self.is_logged_in = False
             return False
 
     async def search_product(self, query: str, quantity: int = 1) -> List[Dict]:
-        """Search Grainger for products and extract real pricing"""
+        """Search Grainger for products using ScraperAPI"""
+        # If no ScraperAPI key, fall back to demo mode
+        if not self.scraperapi_key:
+            logger.warning("No ScraperAPI key configured - using demo mode for Grainger")
+            return self._get_demo_quote(query, quantity)
+
         try:
-            logger.info(f"Searching Grainger for: {query}")
+            logger.info(f"Searching Grainger via ScraperAPI for: {query}")
 
-            # Navigate to search page
-            search_url = f"{self.BASE_URL}/search?searchQuery={query.replace(' ', '+')}"
-            self.driver.get(search_url)
+            # Build Grainger search URL
+            search_url = f"{self.BASE_URL}/search?searchQuery={quote_plus(query)}"
 
-            time.sleep(2)
+            # ScraperAPI parameters
+            params = {
+                'api_key': self.scraperapi_key,
+                'url': search_url,
+                'render': 'true',  # JavaScript rendering
+                'country_code': 'us',
+            }
 
-            wait = WebDriverWait(self.driver, 10)
+            # Make request via ScraperAPI
+            logger.info(f"Fetching via ScraperAPI: {search_url}")
+            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
 
-            # Find first product in results
-            try:
-                first_product = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-grid-item")))
-            except TimeoutException:
-                logger.warning("No products found on Grainger")
+            if response.status_code != 200:
+                logger.error(f"ScraperAPI returned status {response.status_code}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
                 return []
 
-            # Extract product information
-            product_name = first_product.find_element(By.CSS_SELECTOR, "div.product-title").text
+            html = response.text
 
-            # Extract price
-            try:
-                price_element = first_product.find_element(By.CSS_SELECTOR, "span.product-price")
-                price_text = price_element.text.replace('$', '').replace(',', '').strip()
-                unit_price = float(price_text.split('/')[0])
-            except:
-                logger.warning("Could not extract price from Grainger")
-                unit_price = 0.0
+            # Check if we got blocked anyway
+            if "access denied" in html.lower() or "something went wrong" in html.lower():
+                logger.warning("Grainger blocked request even via ScraperAPI")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
 
-            # Extract product URL
-            try:
-                product_link = first_product.find_element(By.CSS_SELECTOR, "a.product-link")
-                product_url = self.BASE_URL + product_link.get_attribute('href')
-            except:
-                product_url = search_url
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
 
-            # Extract Grainger item number
-            try:
-                item_element = first_product.find_element(By.CSS_SELECTOR, "span.grainger-id")
-                item_number = item_element.text
-            except:
-                item_number = f"GR-{abs(hash(query)) % 1000000}"
+            # Try to find products with various selectors
+            products = []
+            product_selectors = [
+                'div.product-grid-item',
+                '[class*="ProductCard"]',
+                '[class*="product-card"]',
+                'div[data-testid*="product"]',
+                'article[class*="product"]',
+                'div[class*="search-results"] div[class*="product"]',
+            ]
 
-            # Extract availability
-            try:
-                availability_element = first_product.find_element(By.CSS_SELECTOR, "div.availability-info")
-                availability = availability_element.text
-            except:
-                availability = "Ships in 1-2 business days"
+            for selector in product_selectors:
+                products = soup.select(selector)
+                if products:
+                    logger.info(f"Found {len(products)} products with selector: {selector}")
+                    break
+
+            if not products:
+                logger.warning(f"No products found for query: {query}")
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+            # Extract info from first product
+            first = products[0]
+
+            # Get product name
+            product_name = query  # Default
+            name_selectors = [
+                'div.product-title',
+                '[class*="product-title"]',
+                '[class*="ProductTitle"]',
+                'h2', 'h3',
+                'a[href*="/product/"]'
+            ]
+            for sel in name_selectors:
+                name_elem = first.select_one(sel)
+                if name_elem and name_elem.get_text(strip=True):
+                    product_name = name_elem.get_text(strip=True)[:100]
+                    break
+
+            # Get price
+            unit_price = 0.0
+            price_selectors = [
+                'span.product-price',
+                '[class*="product-price"]',
+                '[class*="Price"]',
+                'span[class*="price"]',
+                'div[class*="price"]'
+            ]
+            for sel in price_selectors:
+                price_elem = first.select_one(sel)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                    if price_match:
+                        unit_price = float(price_match.group(1).replace(',', ''))
+                        logger.info(f"Extracted price: ${unit_price}")
+                        break
+
+            # Get product URL
+            product_url = search_url
+            link_elem = first.select_one('a[href*="/product/"]')
+            if link_elem:
+                href = link_elem.get('href', '')
+                if href.startswith('/'):
+                    product_url = self.BASE_URL + href
+                elif href.startswith('http'):
+                    product_url = href
+
+            # Get item number
+            item_number = f"GR-{abs(hash(query)) % 1000000}"
+            sku_selectors = [
+                'span.grainger-id',
+                '[class*="grainger-id"]',
+                '[class*="item-number"]',
+                '[class*="sku"]'
+            ]
+            for sel in sku_selectors:
+                sku_elem = first.select_one(sel)
+                if sku_elem:
+                    item_number = sku_elem.get_text(strip=True)
+                    break
+
+            logger.info(f"Found Grainger product: {product_name} - ${unit_price}")
 
             return [{
                 'vendor_name': 'Grainger',
@@ -1181,12 +1299,19 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 'quantity': quantity,
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
-                'availability': availability,
+                'availability': 'Ships in 1-2 business days',
                 'vendor_url': product_url
             }]
 
+        except requests.Timeout:
+            logger.error("ScraperAPI request timed out")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
+            return []
         except Exception as e:
-            logger.error(f"Grainger search failed: {e}")
+            logger.error(f"Grainger ScraperAPI search failed: {e}")
+            if self.allow_demo_fallback and not PRODUCTION_MODE:
+                return self._get_demo_quote(query, quantity)
             return []
 
     def _get_demo_quote(self, query: str, quantity: int) -> List[Dict]:

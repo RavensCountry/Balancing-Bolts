@@ -240,9 +240,13 @@ class VendorQuoteFetcher:
             logger.info(f"FORCE_DEMO_MODE enabled - returning demo quote for {item_description}")
             return self._get_demo_quote(item_description, quantity)
 
-        # Try real browser automation
+        # Check if this fetcher uses ScraperAPI (doesn't need browser)
+        uses_scraperapi = hasattr(self, 'scraperapi_key') and self.scraperapi_key
+
         try:
-            self.init_driver()
+            # Only initialize browser if not using ScraperAPI
+            if not uses_scraperapi:
+                self.init_driver()
 
             if not self.is_logged_in:
                 await self.login()
@@ -289,7 +293,9 @@ class VendorQuoteFetcher:
                 logger.error(f"Error getting quote, falling back to demo data: {e}")
                 return self._get_demo_quote(item_description, quantity)
         finally:
-            self.close_driver()
+            # Only close driver if we opened one
+            if not uses_scraperapi:
+                self.close_driver()
 
     def _get_demo_quote(self, query: str, quantity: int) -> List[Dict]:
         """Generate demo quote data when browser automation is not available"""

@@ -1802,6 +1802,32 @@ def fix_balancingbolts_admin():
         return {"status": "error", "message": str(e)}
 
 
+@app.get('/api/run-migrations')
+@app.post('/api/run-migrations')
+def run_migrations_endpoint():
+    """Emergency endpoint to run pending database migrations - no auth required"""
+    from sqlalchemy import text
+    results = []
+    try:
+        with engine.connect() as conn:
+            # All pending migrations
+            migrations = [
+                "ALTER TABLE quote ADD COLUMN IF NOT EXISTS pricing_type VARCHAR(50);",
+            ]
+
+            for sql in migrations:
+                try:
+                    conn.execute(text(sql))
+                    conn.commit()
+                    results.append({"sql": sql, "status": "success"})
+                except Exception as e:
+                    results.append({"sql": sql, "status": "error", "error": str(e)})
+
+            return {"status": "success", "migrations": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 # ===== VENDOR QUOTE MANAGEMENT =====
 
 @app.post('/api/vendors/credentials')

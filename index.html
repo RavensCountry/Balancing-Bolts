@@ -3106,6 +3106,10 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
       let activityTrackingEnabled = true;
       let currentPage = 'dashboard';
 
+      // Quote polling for auto-refresh
+      let quotePollingInterval = null;
+      const QUOTE_POLL_INTERVAL = 5000; // 5 seconds
+
       async function logActivity(action, target = null, details = null) {
         if (!activityTrackingEnabled) return;
 
@@ -3250,6 +3254,13 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
           }
         }
 
+        // Stop quote polling if leaving quotes page
+        if (pageName !== 'quotes' && quotePollingInterval) {
+          clearInterval(quotePollingInterval);
+          quotePollingInterval = null;
+          console.log('Stopped quote polling (left quotes page)');
+        }
+
         // Load page-specific data
         if (pageName === 'inventory') {
           loadInventory(1);
@@ -3259,6 +3270,7 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
           populatePropertySelect('invoicePropertySelect');
         } else if (pageName === 'quotes') {
           loadQuoteRequests();
+          startQuotePolling();
         } else if (pageName === 'settings') {
           loadUserSettings();
         }
@@ -5799,15 +5811,22 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
             const data = await res.json();
             const quoteCount = data.quote_request.quote_count || 0;
 
-            if (quoteCount > 0) {
-              alert(`✓ Quote request created! Automatically fetched ${quoteCount} quotes from vendors.`);
-            } else {
-              alert('✓ Quote request created! Quotes are being fetched in the background...');
-            }
-
             document.getElementById('newQuoteForm').reset();
             hideNewQuoteRequest();
+
+            // Load quote requests immediately to show the new request
             await loadQuoteRequests();
+
+            // Start polling if not already running
+            if (!quotePollingInterval) {
+              startQuotePolling();
+            }
+
+            if (quoteCount > 0) {
+              alert(`✓ Quote request created! Fetched ${quoteCount} quotes from vendors.`);
+            } else {
+              alert('✓ Quote request created! Quotes are being fetched - the list will auto-refresh.');
+            }
           } else {
             const errorText = await res.text();
             console.error('Failed to create quote request:', res.status, errorText);
@@ -5846,7 +5865,34 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
         }
       }
 
-      async function loadQuoteRequests() {
+      // Start polling for quote updates when on quotes page
+      function startQuotePolling() {
+        // Clear any existing interval
+        if (quotePollingInterval) {
+          clearInterval(quotePollingInterval);
+        }
+
+        // Start polling
+        quotePollingInterval = setInterval(async () => {
+          if (currentPage !== 'quotes') {
+            // Stop polling if we navigated away
+            clearInterval(quotePollingInterval);
+            quotePollingInterval = null;
+            console.log('Stopped quote polling (page changed)');
+            return;
+          }
+
+          console.log('Polling for quote updates...');
+          await loadQuoteRequests(true); // silent refresh
+        }, QUOTE_POLL_INTERVAL);
+
+        console.log('Started quote polling (every ' + QUOTE_POLL_INTERVAL/1000 + 's)');
+      }
+
+      // Track if there are active quote requests being processed
+      let hasActiveQuoteRequests = false;
+
+      async function loadQuoteRequests(silentRefresh = false) {
         const container = document.getElementById('quoteRequestsContent');
         if (!container) {
           console.error('quoteRequestsContent element not found');
@@ -5860,6 +5906,17 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
 
           if (res.ok) {
             const requests = await res.json();
+
+            // Check if any requests are still being processed
+            const activeRequests = requests.filter(r =>
+              r.status === 'pending' || r.status === 'fetching'
+            );
+            hasActiveQuoteRequests = activeRequests.length > 0;
+
+            if (hasActiveQuoteRequests && !silentRefresh) {
+              console.log(`${activeRequests.length} quote request(s) still processing...`);
+            }
+
             displayQuoteRequests(requests);
           } else {
             const errorText = await res.text();
@@ -5887,7 +5944,29 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
           return;
         }
 
-        let html = '<div style="display: grid; gap: 1rem;">';
+        // Check for active requests
+        const activeCount = requests.filter(r => r.status === 'pending' || r.status === 'fetching').length;
+
+        let html = '';
+
+        // Show auto-refresh indicator if there are active requests
+        if (activeCount > 0) {
+          html += `
+            <div style="background: var(--warning-bg, #fff3cd); border: 1px solid var(--warning, #ffc107); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span class="loading-spinner" style="width: 16px; height: 16px; border: 2px solid var(--warning, #ffc107); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></span>
+              <span style="color: var(--warning-text, #856404); font-size: 0.875rem;">
+                <strong>${activeCount}</strong> quote request${activeCount > 1 ? 's' : ''} still fetching... Auto-refreshing every 5 seconds.
+              </span>
+            </div>
+            <style>
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            </style>
+          `;
+        }
+
+        html += '<div style="display: grid; gap: 1rem;">';
 
         // Sort by most recent first
         requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -5897,8 +5976,12 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
                              req.status === 'failed' ? 'danger' :
                              req.status === 'fetching' ? 'warning' : '';
 
+          // Add pulsing animation for fetching status
+          const fetchingStyle = req.status === 'fetching' || req.status === 'pending' ?
+            'animation: pulse 2s ease-in-out infinite;' : '';
+
           html += `
-            <div class="card" style="padding: 1.5rem; cursor: pointer;"
+            <div class="card" style="padding: 1.5rem; cursor: pointer; ${fetchingStyle}"
                  onclick="viewQuoteDetails(${req.id})">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                 <div>
@@ -5907,7 +5990,9 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
                     Quantity: ${req.quantity || 1} | Requested: ${new Date(req.created_at).toLocaleDateString()}
                   </p>
                 </div>
-                <span class="badge ${statusClass}">${(req.status || 'pending').toUpperCase()}</span>
+                <span class="badge ${statusClass}">
+                  ${(req.status === 'fetching' || req.status === 'pending') ? '⏳ ' : ''}${(req.status || 'pending').toUpperCase()}
+                </span>
               </div>
               <div style="display: flex; gap: 1rem; align-items: center;">
                 <span class="badge">${req.quote_count || 0} quotes</span>
@@ -5918,6 +6003,19 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
         });
 
         html += '</div>';
+
+        // Add pulse animation style
+        if (activeCount > 0) {
+          html += `
+            <style>
+              @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.7; }
+              }
+            </style>
+          `;
+        }
+
         container.innerHTML = html;
       }
 

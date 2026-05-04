@@ -266,6 +266,8 @@ try:
         "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45);",
         "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS page VARCHAR(255);",
         "ALTER TABLE activitylog ADD COLUMN IF NOT EXISTS target VARCHAR(255);",
+        # Add pricing_type column to quote table (tracks account vs public vs demo pricing)
+        "ALTER TABLE quote ADD COLUMN IF NOT EXISTS pricing_type VARCHAR(50);",
     ]
 
     with engine.connect() as conn:
@@ -2112,7 +2114,8 @@ async def fetch_quotes(
                     vendor_item_number=quote_data.get('vendor_item_number'),
                     availability=quote_data.get('availability'),
                     vendor_url=vendor_url,  # Now guaranteed to have a value
-                    raw_data=quote_data.get('raw_data')
+                    raw_data=quote_data.get('raw_data'),
+                    pricing_type=quote_data.get('pricing_type', 'public')  # Track if account/public/demo pricing
                 )
                 s.add(quote)
 
@@ -2137,7 +2140,8 @@ async def fetch_quotes(
                     "quantity": q.quantity,
                     "total_price": q.total_price,
                     "availability": q.availability,
-                    "vendor_url": q.vendor_url
+                    "vendor_url": q.vendor_url,
+                    "pricing_type": q.pricing_type  # "account" (business pricing), "public", or "demo"
                 } for q in quotes]
             }
 
@@ -2195,7 +2199,8 @@ def get_quote_request(request_id: int, current_user=Depends(auth.get_current_use
                 "vendor_item_number": q.vendor_item_number,
                 "availability": q.availability,
                 "vendor_url": q.vendor_url,
-                "fetched_at": q.fetched_at.isoformat()
+                "fetched_at": q.fetched_at.isoformat(),
+                "pricing_type": q.pricing_type  # "account" (business pricing), "public", or "demo"
             } for q in quotes]
         }
 

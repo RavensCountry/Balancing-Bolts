@@ -134,3 +134,4 @@ class Quote(SQLModel, table=True):
     vendor_url: Optional[str] = None  # Link to product page
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
     raw_data: Optional[str] = None  # JSON string of raw vendor response
+    pricing_type: Optional[str] = None  # "account" (logged in with business pricing) or "public" (no login)

@@ -5967,11 +5967,22 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
           quotes.forEach((quote, index) => {
             const bestPrice = index === 0 ? 'background: var(--success-light); border: 2px solid var(--success);' : '';
 
+            // Determine pricing type badge
+            const pricingType = quote.pricing_type || 'public';
+            let pricingBadge = '';
+            if (pricingType === 'account') {
+              pricingBadge = '<span style="background: #059669; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-left: 0.5rem;" title="Price from your business account with potential discounts">💼 Account Pricing</span>';
+            } else if (pricingType === 'demo') {
+              pricingBadge = '<span style="background: #f59e0b; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-left: 0.5rem;" title="Demo/simulated pricing - not real">⚠️ Demo</span>';
+            } else {
+              pricingBadge = '<span style="background: #6366f1; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-left: 0.5rem;" title="Public retail pricing (no account login)">🌐 Public Price</span>';
+            }
+
             html += `
               <div class="card" style="padding: 1.5rem; ${bestPrice}" id="quote-${quote.id}">
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                   <div style="flex: 1;">
-                    <h4 style="margin: 0 0 0.5rem 0;">${quote.vendor_name} ${index === 0 ? '⭐ BEST PRICE' : ''}</h4>
+                    <h4 style="margin: 0 0 0.5rem 0;">${quote.vendor_name} ${index === 0 ? '⭐ BEST PRICE' : ''}${pricingBadge}</h4>
                     <p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Product:</strong> ${quote.item_name}</p>
                     ${quote.vendor_item_number ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Item #:</strong> ${quote.vendor_item_number}</p>` : ''}
                     ${quote.availability ? `<p style="margin: 0.25rem 0; font-size: 0.875rem;"><strong>Availability:</strong> ${quote.availability}</p>` : ''}

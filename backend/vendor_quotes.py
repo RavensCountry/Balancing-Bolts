@@ -463,7 +463,8 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
                 'availability': 'Check store availability',
-                'vendor_url': product_url
+                'vendor_url': product_url,
+                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
             }]
 
         except requests.Timeout:
@@ -505,7 +506,8 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
             'total_price': unit_price * quantity,
             'vendor_item_number': f"DEMO-HD-{hash(query) % 100000}",
             'availability': '⚠️ DEMO MODE - Not Real Availability',
-            'vendor_url': product_url
+            'vendor_url': product_url,
+            'pricing_type': 'demo'  # Demo/simulated pricing
         }]
 
 
@@ -649,7 +651,8 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
                 'availability': 'Check store availability',
-                'vendor_url': product_url
+                'vendor_url': product_url,
+                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
             }]
 
         except requests.Timeout:
@@ -1099,7 +1102,8 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
                 'availability': availability,
-                'vendor_url': product_url
+                'vendor_url': product_url,
+                'pricing_type': 'account'  # Logged in with credentials - may have business pricing
             }]
 
         except Exception as e:
@@ -1134,7 +1138,8 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             'total_price': unit_price * quantity,
             'vendor_item_number': f"DEMO-LOW-{hash(query) % 100000}",
             'availability': '⚠️ DEMO MODE - Not Real Availability',
-            'vendor_url': product_url
+            'vendor_url': product_url,
+            'pricing_type': 'demo'  # Demo/simulated pricing
         }]
 
 
@@ -1300,7 +1305,8 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 'total_price': unit_price * quantity,
                 'vendor_item_number': item_number,
                 'availability': 'Ships in 1-2 business days',
-                'vendor_url': product_url
+                'vendor_url': product_url,
+                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
             }]
 
         except requests.Timeout:
@@ -1342,7 +1348,8 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
             'total_price': unit_price * quantity,
             'vendor_item_number': item_number,
             'availability': '⚠️ DEMO MODE - Not Real Availability',
-            'vendor_url': product_url
+            'vendor_url': product_url,
+            'pricing_type': 'demo'  # Demo/simulated pricing
         }]
 
 

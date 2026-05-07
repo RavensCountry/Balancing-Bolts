@@ -1802,7 +1802,7 @@ def fix_balancingbolts_admin():
         return {"status": "error", "message": str(e)}
 
 
-@app.get('/api/quotes/diagnostics')
+@app.get('/api/system/quote-diagnostics')
 def quote_diagnostics():
     """Diagnostic endpoint to check quote system status - no auth required"""
     import os

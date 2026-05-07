@@ -1802,6 +1802,24 @@ def fix_balancingbolts_admin():
         return {"status": "error", "message": str(e)}
 
 
+@app.get('/api/quotes/diagnostics')
+def quote_diagnostics():
+    """Diagnostic endpoint to check quote system status - no auth required"""
+    import os
+    scraperapi_key = os.getenv('SCRAPERAPI_KEY', '')
+    force_demo = os.getenv('FORCE_DEMO_MODE', 'false')
+    production_mode = os.getenv('PRODUCTION_MODE', 'false')
+
+    return {
+        "scraperapi_configured": bool(scraperapi_key),
+        "scraperapi_key_prefix": scraperapi_key[:8] + "..." if len(scraperapi_key) > 8 else "(not set)",
+        "force_demo_mode": force_demo,
+        "production_mode": production_mode,
+        "vendors_supported": ["Home Depot", "Lowe's", "Grainger"],
+        "status": "ready" if scraperapi_key else "demo_mode_only"
+    }
+
+
 @app.get('/api/run-migrations')
 @app.post('/api/run-migrations')
 def run_migrations_endpoint():
@@ -2011,11 +2029,13 @@ async def create_quote_request(
 
     # Auto-fetch quotes if enabled
     if auto_fetch:
+        logger.info(f"Starting auto-fetch for quote request {request_id}: '{item_description}'")
         try:
             await fetch_quotes(request_id, current_user)
-            logger.info(f"Auto-fetched quotes for request {request_id}")
+            logger.info(f"Successfully auto-fetched quotes for request {request_id}")
         except Exception as e:
             logger.exception(f"Error auto-fetching quotes for request {request_id}: {e}")
+            # Don't fail the request creation, just log the error
 
     with get_session() as s:
         quote_request = s.exec(

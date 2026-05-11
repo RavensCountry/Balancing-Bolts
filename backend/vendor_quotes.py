@@ -348,9 +348,14 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                 'country_code': 'us',
             }
 
-            # Make request via ScraperAPI
+            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
-            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
+            response = await asyncio.to_thread(
+                requests.get,
+                self.SCRAPERAPI_URL,
+                params=params,
+                timeout=60
+            )
 
             if response.status_code != 200:
                 logger.error(f"ScraperAPI returned status {response.status_code}")
@@ -562,9 +567,14 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                 'country_code': 'us',
             }
 
-            # Make request via ScraperAPI
+            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
-            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
+            response = await asyncio.to_thread(
+                requests.get,
+                self.SCRAPERAPI_URL,
+                params=params,
+                timeout=60
+            )
 
             if response.status_code != 200:
                 logger.error(f"ScraperAPI returned status {response.status_code}")
@@ -1194,9 +1204,14 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                 'country_code': 'us',
             }
 
-            # Make request via ScraperAPI
+            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
-            response = requests.get(self.SCRAPERAPI_URL, params=params, timeout=60)
+            response = await asyncio.to_thread(
+                requests.get,
+                self.SCRAPERAPI_URL,
+                params=params,
+                timeout=60
+            )
 
             if response.status_code != 200:
                 logger.error(f"ScraperAPI returned status {response.status_code}")
@@ -1410,9 +1425,14 @@ async def fetch_quotes_from_vendors(
 
     # Flatten results and filter out errors
     quotes = []
-    for result in results:
+    for i, result in enumerate(results):
         if isinstance(result, list):
             quotes.extend(result)
+        elif isinstance(result, Exception):
+            vendor_name = vendor_credentials[i]['vendor_name'] if i < len(vendor_credentials) else 'Unknown'
+            logger.error(f"Error fetching quotes from {vendor_name}: {result}", exc_info=result)
+        else:
+            logger.warning(f"Unexpected result type from vendor fetch: {type(result)}")
 
     return quotes
 

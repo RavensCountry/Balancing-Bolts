@@ -5785,6 +5785,12 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
       async function createQuoteRequest(event) {
         event.preventDefault();
 
+        // Disable submit button to prevent duplicates
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating...';
+
         const formData = new FormData();
         formData.append('item_description', document.getElementById('quoteItemDescription').value);
         formData.append('quantity', document.getElementById('quoteQuantity').value);
@@ -5842,6 +5848,10 @@ vendor, date, item_name, quantity, unit_price, product_id<br>
         } catch (e) {
           console.error('Error creating quote request:', e);
           alert(`Error: ${e.message}`);
+        } finally {
+          // Re-enable button
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
         }
       }
 

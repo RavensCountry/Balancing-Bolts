@@ -2007,6 +2007,8 @@ async def create_quote_request(
     current_user=Depends(auth.get_current_user)
 ):
     """Create a new quote request and optionally auto-fetch quotes"""
+    logger.info(f"Creating quote request: '{item_description}', auto_fetch={auto_fetch}")
+
     with get_session() as s:
         # Validate property if provided
         if property_id:
@@ -2026,6 +2028,7 @@ async def create_quote_request(
         s.refresh(quote_request)
 
         request_id = quote_request.id
+        logger.info(f"Created quote request {request_id}")
 
     # Auto-fetch quotes if enabled
     if auto_fetch:
@@ -2036,6 +2039,8 @@ async def create_quote_request(
         except Exception as e:
             logger.exception(f"Error auto-fetching quotes for request {request_id}: {e}")
             # Don't fail the request creation, just log the error
+    else:
+        logger.info(f"Auto-fetch disabled for quote request {request_id}")
 
     with get_session() as s:
         quote_request = s.exec(

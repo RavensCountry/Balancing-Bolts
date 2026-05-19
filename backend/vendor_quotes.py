@@ -334,73 +334,92 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
             logger.warning("No ScraperAPI key configured - using demo mode for Home Depot")
             return self._get_demo_quote(query, quantity)
 
-        try:
-            logger.info(f"Searching Home Depot via ScraperAPI for: {query}")
+        # Try fast approach first (no JS rendering), then fall back to slow rendering if needed
+        for attempt, use_rendering in enumerate([False, True], 1):
+            try:
+                render_mode = "with JS rendering" if use_rendering else "without rendering"
+                logger.info(f"Searching Home Depot via ScraperAPI (attempt {attempt}, {render_mode}): {query}")
 
-            # Build Home Depot search URL
-            search_url = f"{self.BASE_URL}/s/{quote_plus(query)}"
+                # Build Home Depot search URL
+                search_url = f"{self.BASE_URL}/s/{quote_plus(query)}"
 
-            # ScraperAPI parameters
-            params = {
-                'api_key': self.scraperapi_key,
-                'url': search_url,
-                'render': 'true',  # JavaScript rendering for React site
-                'country_code': 'us',
-            }
+                # ScraperAPI parameters - try without rendering first for speed
+                params = {
+                    'api_key': self.scraperapi_key,
+                    'url': search_url,
+                    'country_code': 'us',
+                }
 
-            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
-            logger.info(f"Fetching via ScraperAPI: {search_url}")
-            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+                # Only add rendering on second attempt (10x slower and more expensive)
+                if use_rendering:
+                    params['render'] = 'true'
+                    logger.info("Using JS rendering (slower but more reliable)")
 
-            response = await asyncio.to_thread(
-                requests.get,
-                self.SCRAPERAPI_URL,
-                params=params,
-                timeout=30  # Reduced from 60s to 30s for faster failures
-            )
+                # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
+                if attempt == 1:
+                    logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
 
-            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+                response = await asyncio.to_thread(
+                    requests.get,
+                    self.SCRAPERAPI_URL,
+                    params=params,
+                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                )
 
-            if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
 
-            html = response.text
+                if response.status_code != 200:
+                    logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Check if we got blocked anyway
-            if "access denied" in html.lower() or "something went wrong" in html.lower():
-                logger.warning("Home Depot blocked request even via ScraperAPI")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                html = response.text
 
-            # Parse HTML with BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
+                # Check if we got blocked anyway
+                if "access denied" in html.lower() or "something went wrong" in html.lower():
+                    logger.warning(f"Home Depot blocked request via ScraperAPI (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Try to find products with various selectors
-            products = []
-            product_selectors = [
-                'div[data-testid="product-pod"]',
-                'div.product-pod',
-                '[class*="product-pod"]',
-                '[class*="ProductPod"]',
-                'div[data-component="product-pod"]',
-                'article[data-testid]',
-            ]
+                # Parse HTML with BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
 
-            for selector in product_selectors:
-                products = soup.select(selector)
-                if products:
-                    logger.info(f"Found {len(products)} products with selector: {selector}")
-                    break
+                # Try to find products with various selectors
+                products = []
+                product_selectors = [
+                    'div[data-testid="product-pod"]',
+                    'div.product-pod',
+                    '[class*="product-pod"]',
+                    '[class*="ProductPod"]',
+                    'div[data-component="product-pod"]',
+                    'article[data-testid]',
+                ]
 
-            if not products:
-                logger.warning(f"No products found for query: {query}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                for selector in product_selectors:
+                    products = soup.select(selector)
+                    if products:
+                        logger.info(f"Found {len(products)} products with selector: {selector}")
+                        break
+
+                if not products:
+                    logger.warning(f"No products found for query: {query} (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
             # Extract info from first product
             first = products[0]
@@ -467,31 +486,45 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                         item_number = sku_match.group(1)
                         break
 
-            logger.info(f"Found Home Depot product: {product_name} - ${unit_price}")
+                logger.info(f"Found Home Depot product ({render_mode}): {product_name} - ${unit_price}")
 
-            return [{
-                'vendor_name': 'Home Depot',
-                'item_name': product_name,
-                'item_description': product_name,
-                'unit_price': unit_price,
-                'quantity': quantity,
-                'total_price': unit_price * quantity,
-                'vendor_item_number': item_number,
-                'availability': 'Check store availability',
-                'vendor_url': product_url,
-                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
-            }]
+                # Success! Return the quote
+                return [{
+                    'vendor_name': 'Home Depot',
+                    'item_name': product_name,
+                    'item_description': product_name,
+                    'unit_price': unit_price,
+                    'quantity': quantity,
+                    'total_price': unit_price * quantity,
+                    'vendor_item_number': item_number,
+                    'availability': 'Check store availability',
+                    'vendor_url': product_url,
+                    'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
+                }]
 
-        except requests.Timeout:
-            logger.error("ScraperAPI request timed out")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
-        except Exception as e:
-            logger.error(f"Home Depot ScraperAPI search failed: {e}")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
+            except requests.Timeout:
+                logger.error(f"ScraperAPI request timed out (attempt {attempt}, {render_mode})")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt timed out
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+            except Exception as e:
+                logger.error(f"Home Depot ScraperAPI search failed (attempt {attempt}, {render_mode}): {e}")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt failed
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+        # All attempts exhausted
+        if self.allow_demo_fallback and not PRODUCTION_MODE:
+            return self._get_demo_quote(query, quantity)
+        return []
 
     def _get_demo_quote(self, query: str, quantity: int) -> List[Dict]:
         """Return demo data for Home Depot when browser automation fails"""
@@ -557,138 +590,171 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
             logger.warning("No ScraperAPI key configured - using demo mode for Lowe's")
             return self._get_demo_quote(query, quantity)
 
-        try:
-            logger.info(f"Searching Lowe's via ScraperAPI for: {query}")
+        # Try fast approach first (no JS rendering), then fall back to slow rendering if needed
+        for attempt, use_rendering in enumerate([False, True], 1):
+            try:
+                render_mode = "with JS rendering" if use_rendering else "without rendering"
+                logger.info(f"Searching Lowe's via ScraperAPI (attempt {attempt}, {render_mode}): {query}")
 
-            # Build Lowe's search URL
-            search_url = f"{self.BASE_URL}/search?searchTerm={quote_plus(query)}"
+                # Build Lowe's search URL
+                search_url = f"{self.BASE_URL}/search?searchTerm={quote_plus(query)}"
 
-            # ScraperAPI parameters
-            params = {
-                'api_key': self.scraperapi_key,
-                'url': search_url,
-                'render': 'true',  # JavaScript rendering for React site
-                'country_code': 'us',
-            }
+                # ScraperAPI parameters - try without rendering first for speed
+                params = {
+                    'api_key': self.scraperapi_key,
+                    'url': search_url,
+                    'country_code': 'us',
+                }
 
-            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
-            logger.info(f"Fetching via ScraperAPI: {search_url}")
-            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+                # Only add rendering on second attempt (10x slower and more expensive)
+                if use_rendering:
+                    params['render'] = 'true'
+                    logger.info("Using JS rendering (slower but more reliable)")
 
-            response = await asyncio.to_thread(
-                requests.get,
-                self.SCRAPERAPI_URL,
-                params=params,
-                timeout=30  # Reduced from 60s to 30s for faster failures
-            )
+                # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
+                if attempt == 1:
+                    logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
 
-            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+                response = await asyncio.to_thread(
+                    requests.get,
+                    self.SCRAPERAPI_URL,
+                    params=params,
+                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                )
 
-            if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
 
-            html = response.text
+                if response.status_code != 200:
+                    logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Check if we got blocked anyway
-            if "access denied" in html.lower() or "something went wrong" in html.lower():
-                logger.warning("Lowe's blocked request even via ScraperAPI")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                html = response.text
 
-            # Parse HTML with BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
+                # Check if we got blocked anyway
+                if "access denied" in html.lower() or "something went wrong" in html.lower():
+                    logger.warning(f"Lowe's blocked request via ScraperAPI (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Try to find products with various selectors
-            products = []
-            product_selectors = [
-                'div[data-selector="splp-prd-grid-tile"]',
-                'div.product-card',
-                '[class*="ProductCard"]',
-                '[class*="product-card"]',
-                'div[data-itemid]',
-            ]
+                # Parse HTML with BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
 
-            for selector in product_selectors:
-                products = soup.select(selector)
-                if products:
-                    logger.info(f"Found {len(products)} products with selector: {selector}")
-                    break
+                # Try to find products with various selectors
+                products = []
+                product_selectors = [
+                    'div[data-selector="splp-prd-grid-tile"]',
+                    'div.product-card',
+                    '[class*="ProductCard"]',
+                    '[class*="product-card"]',
+                    'div[data-itemid]',
+                ]
 
-            if not products:
-                logger.warning(f"No products found for query: {query}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
-
-            # Extract info from first product
-            first = products[0]
-
-            # Get product name
-            product_name = query  # Default
-            name_selectors = ['[class*="title"]', 'h2', 'h3', 'a[href*="/pd/"]']
-            for sel in name_selectors:
-                name_elem = first.select_one(sel)
-                if name_elem and name_elem.get_text(strip=True):
-                    product_name = name_elem.get_text(strip=True)[:100]
-                    break
-
-            # Get price
-            unit_price = 0.0
-            price_selectors = ['[class*="price"]', 'span.price', 'div.price']
-            for sel in price_selectors:
-                price_elem = first.select_one(sel)
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
-                    if price_match:
-                        unit_price = float(price_match.group(1).replace(',', ''))
-                        logger.info(f"Extracted price: ${unit_price}")
+                for selector in product_selectors:
+                    products = soup.select(selector)
+                    if products:
+                        logger.info(f"Found {len(products)} products with selector: {selector}")
                         break
 
-            # Get product URL
-            product_url = search_url
-            link_elem = first.select_one('a[href*="/pd/"]')
-            if link_elem:
-                href = link_elem.get('href', '')
-                if href.startswith('/'):
-                    product_url = self.BASE_URL + href
-                elif href.startswith('http'):
-                    product_url = href
+                if not products:
+                    logger.warning(f"No products found for query: {query} (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Get item number
-            item_number = f"LOW-{abs(hash(query)) % 1000000}"
-            if first.get('data-itemid'):
-                item_number = first.get('data-itemid')
+                # Extract info from first product
+                first = products[0]
 
-            logger.info(f"Found Lowe's product: {product_name} - ${unit_price}")
+                # Get product name
+                product_name = query  # Default
+                name_selectors = ['[class*="title"]', 'h2', 'h3', 'a[href*="/pd/"]']
+                for sel in name_selectors:
+                    name_elem = first.select_one(sel)
+                    if name_elem and name_elem.get_text(strip=True):
+                        product_name = name_elem.get_text(strip=True)[:100]
+                        break
 
-            return [{
-                'vendor_name': "Lowe's",
-                'item_name': product_name,
-                'item_description': product_name,
-                'unit_price': unit_price,
-                'quantity': quantity,
-                'total_price': unit_price * quantity,
-                'vendor_item_number': item_number,
-                'availability': 'Check store availability',
-                'vendor_url': product_url,
-                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
-            }]
+                # Get price
+                unit_price = 0.0
+                price_selectors = ['[class*="price"]', 'span.price', 'div.price']
+                for sel in price_selectors:
+                    price_elem = first.select_one(sel)
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                        if price_match:
+                            unit_price = float(price_match.group(1).replace(',', ''))
+                            logger.info(f"Extracted price: ${unit_price}")
+                            break
 
-        except requests.Timeout:
-            logger.error("ScraperAPI request timed out")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
-        except Exception as e:
-            logger.error(f"Lowe's ScraperAPI search failed: {e}")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
+                # Get product URL
+                product_url = search_url
+                link_elem = first.select_one('a[href*="/pd/"]')
+                if link_elem:
+                    href = link_elem.get('href', '')
+                    if href.startswith('/'):
+                        product_url = self.BASE_URL + href
+                    elif href.startswith('http'):
+                        product_url = href
+
+                # Get item number
+                item_number = f"LOW-{abs(hash(query)) % 1000000}"
+                if first.get('data-itemid'):
+                    item_number = first.get('data-itemid')
+
+                logger.info(f"Found Lowe's product ({render_mode}): {product_name} - ${unit_price}")
+
+                # Success! Return the quote
+                return [{
+                    'vendor_name': "Lowe's",
+                    'item_name': product_name,
+                    'item_description': product_name,
+                    'unit_price': unit_price,
+                    'quantity': quantity,
+                    'total_price': unit_price * quantity,
+                    'vendor_item_number': item_number,
+                    'availability': 'Check store availability',
+                    'vendor_url': product_url,
+                    'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
+                }]
+
+            except requests.Timeout:
+                logger.error(f"ScraperAPI request timed out (attempt {attempt}, {render_mode})")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt timed out
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+            except Exception as e:
+                logger.error(f"Lowe's ScraperAPI search failed (attempt {attempt}, {render_mode}): {e}")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt failed
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+        # All attempts exhausted
+        if self.allow_demo_fallback and not PRODUCTION_MODE:
+            return self._get_demo_quote(query, quantity)
+        return []
 
     async def _legacy_login(self) -> bool:
         """Login to Lowe's - handles two-step login flow"""
@@ -1198,73 +1264,92 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
             logger.warning("No ScraperAPI key configured - using demo mode for Grainger")
             return self._get_demo_quote(query, quantity)
 
-        try:
-            logger.info(f"Searching Grainger via ScraperAPI for: {query}")
+        # Try fast approach first (no JS rendering), then fall back to slow rendering if needed
+        for attempt, use_rendering in enumerate([False, True], 1):
+            try:
+                render_mode = "with JS rendering" if use_rendering else "without rendering"
+                logger.info(f"Searching Grainger via ScraperAPI (attempt {attempt}, {render_mode}): {query}")
 
-            # Build Grainger search URL
-            search_url = f"{self.BASE_URL}/search?searchQuery={quote_plus(query)}"
+                # Build Grainger search URL
+                search_url = f"{self.BASE_URL}/search?searchQuery={quote_plus(query)}"
 
-            # ScraperAPI parameters
-            params = {
-                'api_key': self.scraperapi_key,
-                'url': search_url,
-                'render': 'true',  # JavaScript rendering
-                'country_code': 'us',
-            }
+                # ScraperAPI parameters - try without rendering first for speed
+                params = {
+                    'api_key': self.scraperapi_key,
+                    'url': search_url,
+                    'country_code': 'us',
+                }
 
-            # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
-            logger.info(f"Fetching via ScraperAPI: {search_url}")
-            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+                # Only add rendering on second attempt (10x slower and more expensive)
+                if use_rendering:
+                    params['render'] = 'true'
+                    logger.info("Using JS rendering (slower but more reliable)")
 
-            response = await asyncio.to_thread(
-                requests.get,
-                self.SCRAPERAPI_URL,
-                params=params,
-                timeout=30  # Reduced from 60s to 30s for faster failures
-            )
+                # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
+                if attempt == 1:
+                    logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
 
-            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+                response = await asyncio.to_thread(
+                    requests.get,
+                    self.SCRAPERAPI_URL,
+                    params=params,
+                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                )
 
-            if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
 
-            html = response.text
+                if response.status_code != 200:
+                    logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Check if we got blocked anyway
-            if "access denied" in html.lower() or "something went wrong" in html.lower():
-                logger.warning("Grainger blocked request even via ScraperAPI")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                html = response.text
 
-            # Parse HTML with BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
+                # Check if we got blocked anyway
+                if "access denied" in html.lower() or "something went wrong" in html.lower():
+                    logger.warning(f"Grainger blocked request via ScraperAPI (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
-            # Try to find products with various selectors
-            products = []
-            product_selectors = [
-                'div.product-grid-item',
-                '[class*="ProductCard"]',
-                '[class*="product-card"]',
-                'div[data-testid*="product"]',
-                'article[class*="product"]',
-                'div[class*="search-results"] div[class*="product"]',
-            ]
+                # Parse HTML with BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
 
-            for selector in product_selectors:
-                products = soup.select(selector)
-                if products:
-                    logger.info(f"Found {len(products)} products with selector: {selector}")
-                    break
+                # Try to find products with various selectors
+                products = []
+                product_selectors = [
+                    'div.product-grid-item',
+                    '[class*="ProductCard"]',
+                    '[class*="product-card"]',
+                    'div[data-testid*="product"]',
+                    'article[class*="product"]',
+                    'div[class*="search-results"] div[class*="product"]',
+                ]
 
-            if not products:
-                logger.warning(f"No products found for query: {query}")
-                if self.allow_demo_fallback and not PRODUCTION_MODE:
-                    return self._get_demo_quote(query, quantity)
-                return []
+                for selector in product_selectors:
+                    products = soup.select(selector)
+                    if products:
+                        logger.info(f"Found {len(products)} products with selector: {selector}")
+                        break
+
+                if not products:
+                    logger.warning(f"No products found for query: {query} (attempt {attempt})")
+                    # Try next approach if available
+                    if attempt < 2:
+                        continue
+                    # Last attempt failed
+                    if self.allow_demo_fallback and not PRODUCTION_MODE:
+                        return self._get_demo_quote(query, quantity)
+                    return []
 
             # Extract info from first product
             first = products[0]
@@ -1327,31 +1412,45 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                     item_number = sku_elem.get_text(strip=True)
                     break
 
-            logger.info(f"Found Grainger product: {product_name} - ${unit_price}")
+                logger.info(f"Found Grainger product ({render_mode}): {product_name} - ${unit_price}")
 
-            return [{
-                'vendor_name': 'Grainger',
-                'item_name': product_name,
-                'item_description': product_name,
-                'unit_price': unit_price,
-                'quantity': quantity,
-                'total_price': unit_price * quantity,
-                'vendor_item_number': item_number,
-                'availability': 'Ships in 1-2 business days',
-                'vendor_url': product_url,
-                'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
-            }]
+                # Success! Return the quote
+                return [{
+                    'vendor_name': 'Grainger',
+                    'item_name': product_name,
+                    'item_description': product_name,
+                    'unit_price': unit_price,
+                    'quantity': quantity,
+                    'total_price': unit_price * quantity,
+                    'vendor_item_number': item_number,
+                    'availability': 'Ships in 1-2 business days',
+                    'vendor_url': product_url,
+                    'pricing_type': 'public'  # ScraperAPI fetches public pricing (no login)
+                }]
 
-        except requests.Timeout:
-            logger.error("ScraperAPI request timed out")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
-        except Exception as e:
-            logger.error(f"Grainger ScraperAPI search failed: {e}")
-            if self.allow_demo_fallback and not PRODUCTION_MODE:
-                return self._get_demo_quote(query, quantity)
-            return []
+            except requests.Timeout:
+                logger.error(f"ScraperAPI request timed out (attempt {attempt}, {render_mode})")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt timed out
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+            except Exception as e:
+                logger.error(f"Grainger ScraperAPI search failed (attempt {attempt}, {render_mode}): {e}")
+                # Try next approach if available
+                if attempt < 2:
+                    continue
+                # Last attempt failed
+                if self.allow_demo_fallback and not PRODUCTION_MODE:
+                    return self._get_demo_quote(query, quantity)
+                return []
+
+        # All attempts exhausted
+        if self.allow_demo_fallback and not PRODUCTION_MODE:
+            return self._get_demo_quote(query, quantity)
+        return []
 
     def _get_demo_quote(self, query: str, quantity: int) -> List[Dict]:
         """Return demo data for Grainger when browser automation fails"""

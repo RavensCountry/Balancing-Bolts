@@ -2170,8 +2170,13 @@ async def fetch_quotes(
                 )
                 s.add(quote)
 
-            # Update request status
-            quote_request.status = QuoteStatus.completed
+            # Update request status based on results
+            if len(quotes_data) > 0:
+                quote_request.status = QuoteStatus.completed
+                logger.info(f"Quote request {request_id} completed with {len(quotes_data)} quotes")
+            else:
+                quote_request.status = QuoteStatus.failed
+                logger.warning(f"Quote request {request_id} failed - no quotes received from any vendor")
             s.add(quote_request)
             s.commit()
 

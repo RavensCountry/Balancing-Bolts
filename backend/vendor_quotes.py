@@ -350,15 +350,19 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
 
             # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
+            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+
             response = await asyncio.to_thread(
                 requests.get,
                 self.SCRAPERAPI_URL,
                 params=params,
-                timeout=60
+                timeout=30  # Reduced from 60s to 30s for faster failures
             )
 
+            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+
             if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}")
+                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
                 if self.allow_demo_fallback and not PRODUCTION_MODE:
                     return self._get_demo_quote(query, quantity)
                 return []
@@ -569,15 +573,19 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
 
             # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
+            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+
             response = await asyncio.to_thread(
                 requests.get,
                 self.SCRAPERAPI_URL,
                 params=params,
-                timeout=60
+                timeout=30  # Reduced from 60s to 30s for faster failures
             )
 
+            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+
             if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}")
+                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
                 if self.allow_demo_fallback and not PRODUCTION_MODE:
                     return self._get_demo_quote(query, quantity)
                 return []
@@ -1206,15 +1214,19 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
 
             # Make request via ScraperAPI (run in thread pool to avoid blocking event loop)
             logger.info(f"Fetching via ScraperAPI: {search_url}")
+            logger.info(f"ScraperAPI key present: {bool(self.scraperapi_key)}, key length: {len(self.scraperapi_key) if self.scraperapi_key else 0}")
+
             response = await asyncio.to_thread(
                 requests.get,
                 self.SCRAPERAPI_URL,
                 params=params,
-                timeout=60
+                timeout=30  # Reduced from 60s to 30s for faster failures
             )
 
+            logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
+
             if response.status_code != 200:
-                logger.error(f"ScraperAPI returned status {response.status_code}")
+                logger.error(f"ScraperAPI returned status {response.status_code}: {response.text[:500]}")
                 if self.allow_demo_fallback and not PRODUCTION_MODE:
                     return self._get_demo_quote(query, quantity)
                 return []

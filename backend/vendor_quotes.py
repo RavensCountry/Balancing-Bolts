@@ -363,7 +363,7 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                     requests.get,
                     self.SCRAPERAPI_URL,
                     params=params,
-                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                    timeout=15 if not use_rendering else 60  # Shorter timeout for fast mode
                 )
 
                 logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
@@ -619,7 +619,7 @@ class LowesQuoteFetcher(VendorQuoteFetcher):
                     requests.get,
                     self.SCRAPERAPI_URL,
                     params=params,
-                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                    timeout=15 if not use_rendering else 60  # Shorter timeout for fast mode
                 )
 
                 logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")
@@ -1293,7 +1293,7 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                     requests.get,
                     self.SCRAPERAPI_URL,
                     params=params,
-                    timeout=15 if not use_rendering else 30  # Shorter timeout for fast mode
+                    timeout=15 if not use_rendering else 60  # Shorter timeout for fast mode
                 )
 
                 logger.info(f"ScraperAPI response status: {response.status_code}, content length: {len(response.text)}")

@@ -421,70 +421,70 @@ class HomeDepotQuoteFetcher(VendorQuoteFetcher):
                         return self._get_demo_quote(query, quantity)
                     return []
 
-            # Extract info from first product
-            first = products[0]
+                # Extract info from first product
+                first = products[0]
 
-            # Get product name
-            product_name = query  # Default
-            name_selectors = [
-                '[class*="product-title"]',
-                '[class*="product-header__title"]',
-                'span.product-header__title',
-                'a[data-testid="product-title"]',
-                'h2', 'h3',
-                'a[href*="/p/"]'
-            ]
-            for sel in name_selectors:
-                name_elem = first.select_one(sel)
-                if name_elem and name_elem.get_text(strip=True):
-                    product_name = name_elem.get_text(strip=True)[:100]
-                    break
-
-            # Get price
-            unit_price = 0.0
-            price_selectors = [
-                '[class*="price__dollars"]',
-                '[class*="price-format__main-price"]',
-                'span[class*="price"]',
-                'div[class*="price"]',
-                '[data-testid="price"]'
-            ]
-            for sel in price_selectors:
-                price_elem = first.select_one(sel)
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
-                    if price_match:
-                        unit_price = float(price_match.group(1).replace(',', ''))
-                        logger.info(f"Extracted price: ${unit_price}")
+                # Get product name
+                product_name = query  # Default
+                name_selectors = [
+                    '[class*="product-title"]',
+                    '[class*="product-header__title"]',
+                    'span.product-header__title',
+                    'a[data-testid="product-title"]',
+                    'h2', 'h3',
+                    'a[href*="/p/"]'
+                ]
+                for sel in name_selectors:
+                    name_elem = first.select_one(sel)
+                    if name_elem and name_elem.get_text(strip=True):
+                        product_name = name_elem.get_text(strip=True)[:100]
                         break
 
-            # Get product URL
-            product_url = search_url
-            link_elem = first.select_one('a[href*="/p/"]')
-            if link_elem:
-                href = link_elem.get('href', '')
-                if href.startswith('/'):
-                    product_url = self.BASE_URL + href
-                elif href.startswith('http'):
-                    product_url = href
+                # Get price
+                unit_price = 0.0
+                price_selectors = [
+                    '[class*="price__dollars"]',
+                    '[class*="price-format__main-price"]',
+                    'span[class*="price"]',
+                    'div[class*="price"]',
+                    '[data-testid="price"]'
+                ]
+                for sel in price_selectors:
+                    price_elem = first.select_one(sel)
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                        if price_match:
+                            unit_price = float(price_match.group(1).replace(',', ''))
+                            logger.info(f"Extracted price: ${unit_price}")
+                            break
 
-            # Get item number/SKU
-            item_number = f"HD-{abs(hash(query)) % 1000000}"
-            sku_selectors = [
-                '[class*="product-identifier"]',
-                '[data-testid="product-identifier"]',
-                'span[class*="model"]'
-            ]
-            for sel in sku_selectors:
-                sku_elem = first.select_one(sel)
-                if sku_elem:
-                    sku_text = sku_elem.get_text(strip=True)
-                    # Extract number after # or "Model"
-                    sku_match = re.search(r'#?\s*(\w+)', sku_text)
-                    if sku_match:
-                        item_number = sku_match.group(1)
-                        break
+                # Get product URL
+                product_url = search_url
+                link_elem = first.select_one('a[href*="/p/"]')
+                if link_elem:
+                    href = link_elem.get('href', '')
+                    if href.startswith('/'):
+                        product_url = self.BASE_URL + href
+                    elif href.startswith('http'):
+                        product_url = href
+
+                # Get item number/SKU
+                item_number = f"HD-{abs(hash(query)) % 1000000}"
+                sku_selectors = [
+                    '[class*="product-identifier"]',
+                    '[data-testid="product-identifier"]',
+                    'span[class*="model"]'
+                ]
+                for sel in sku_selectors:
+                    sku_elem = first.select_one(sel)
+                    if sku_elem:
+                        sku_text = sku_elem.get_text(strip=True)
+                        # Extract number after # or "Model"
+                        sku_match = re.search(r'#?\s*(\w+)', sku_text)
+                        if sku_match:
+                            item_number = sku_match.group(1)
+                            break
 
                 logger.info(f"Found Home Depot product ({render_mode}): {product_name} - ${unit_price}")
 
@@ -1351,66 +1351,66 @@ class GraingerQuoteFetcher(VendorQuoteFetcher):
                         return self._get_demo_quote(query, quantity)
                     return []
 
-            # Extract info from first product
-            first = products[0]
+                # Extract info from first product
+                first = products[0]
 
-            # Get product name
-            product_name = query  # Default
-            name_selectors = [
-                'div.product-title',
-                '[class*="product-title"]',
-                '[class*="ProductTitle"]',
-                'h2', 'h3',
-                'a[href*="/product/"]'
-            ]
-            for sel in name_selectors:
-                name_elem = first.select_one(sel)
-                if name_elem and name_elem.get_text(strip=True):
-                    product_name = name_elem.get_text(strip=True)[:100]
-                    break
-
-            # Get price
-            unit_price = 0.0
-            price_selectors = [
-                'span.product-price',
-                '[class*="product-price"]',
-                '[class*="Price"]',
-                'span[class*="price"]',
-                'div[class*="price"]'
-            ]
-            for sel in price_selectors:
-                price_elem = first.select_one(sel)
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
-                    if price_match:
-                        unit_price = float(price_match.group(1).replace(',', ''))
-                        logger.info(f"Extracted price: ${unit_price}")
+                # Get product name
+                product_name = query  # Default
+                name_selectors = [
+                    'div.product-title',
+                    '[class*="product-title"]',
+                    '[class*="ProductTitle"]',
+                    'h2', 'h3',
+                    'a[href*="/product/"]'
+                ]
+                for sel in name_selectors:
+                    name_elem = first.select_one(sel)
+                    if name_elem and name_elem.get_text(strip=True):
+                        product_name = name_elem.get_text(strip=True)[:100]
                         break
 
-            # Get product URL
-            product_url = search_url
-            link_elem = first.select_one('a[href*="/product/"]')
-            if link_elem:
-                href = link_elem.get('href', '')
-                if href.startswith('/'):
-                    product_url = self.BASE_URL + href
-                elif href.startswith('http'):
-                    product_url = href
+                # Get price
+                unit_price = 0.0
+                price_selectors = [
+                    'span.product-price',
+                    '[class*="product-price"]',
+                    '[class*="Price"]',
+                    'span[class*="price"]',
+                    'div[class*="price"]'
+                ]
+                for sel in price_selectors:
+                    price_elem = first.select_one(sel)
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text)
+                        if price_match:
+                            unit_price = float(price_match.group(1).replace(',', ''))
+                            logger.info(f"Extracted price: ${unit_price}")
+                            break
 
-            # Get item number
-            item_number = f"GR-{abs(hash(query)) % 1000000}"
-            sku_selectors = [
-                'span.grainger-id',
-                '[class*="grainger-id"]',
-                '[class*="item-number"]',
-                '[class*="sku"]'
-            ]
-            for sel in sku_selectors:
-                sku_elem = first.select_one(sel)
-                if sku_elem:
-                    item_number = sku_elem.get_text(strip=True)
-                    break
+                # Get product URL
+                product_url = search_url
+                link_elem = first.select_one('a[href*="/product/"]')
+                if link_elem:
+                    href = link_elem.get('href', '')
+                    if href.startswith('/'):
+                        product_url = self.BASE_URL + href
+                    elif href.startswith('http'):
+                        product_url = href
+
+                # Get item number
+                item_number = f"GR-{abs(hash(query)) % 1000000}"
+                sku_selectors = [
+                    'span.grainger-id',
+                    '[class*="grainger-id"]',
+                    '[class*="item-number"]',
+                    '[class*="sku"]'
+                ]
+                for sel in sku_selectors:
+                    sku_elem = first.select_one(sel)
+                    if sku_elem:
+                        item_number = sku_elem.get_text(strip=True)
+                        break
 
                 logger.info(f"Found Grainger product ({render_mode}): {product_name} - ${unit_price}")
 
